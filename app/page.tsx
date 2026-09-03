@@ -63,8 +63,6 @@ export default function Home() {
   const [formation, setFormation] = useState<string>('4-3-3');
 
   const [pitchTokens, setPitchTokens] = useState<PitchToken[]>([]);
-  const [draggingTokenId, setDraggingTokenId] = useState<string | null>(null);
-  const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
   const pitchRef = useRef<HTMLDivElement | null>(null);
 
   const [aiPrompt, setAiPrompt] = useState('');
