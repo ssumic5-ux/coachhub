@@ -56,19 +56,17 @@ export default function Home() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [sessions, setSessions] = useState<TrainingSession[]>([]);
   const [leagues, setLeagues] = useState<League[]>([]);
-  const [activeLeagueId, setActiveLeagueId] = useState<string>('');
+  
+  // Två separata val för rullgardinerna
+  const [selectedBoyLeagueId, setSelectedBoyLeagueId] = useState<string>('');
+  const [selectedGirlLeagueId, setSelectedGirlLeagueId] = useState<string>('');
+  
+  // Det aktiva lag som väljs för taktikvyn
   const [selectedOpponentTeamId, setSelectedOpponentTeamId] = useState<string>('');
 
   const [newPlayerName, setNewPlayerName] = useState('');
   const [newPlayerPos, setNewPlayerPos] = useState('Mittfältare');
   const [newPlayerNum, setNewPlayerNum] = useState<number | ''>('');
-
-  const [newLeagueName, setNewLeagueName] = useState('');
-  const [newLeagueCategory, setNewLeagueCategory] = useState<'Pojkar' | 'Flickor' | 'Cuper'>('Pojkar');
-
-  const [newSessionDate, setNewSessionDate] = useState('');
-  const [newSessionTitle, setNewSessionTitle] = useState('');
-  const [newSessionFocus, setNewSessionFocus] = useState('');
 
   const [formation, setFormation] = useState<string>('4-3-3');
 
@@ -86,8 +84,9 @@ export default function Home() {
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiResponse, setAiResponse] = useState<string | null>(null);
 
-  // Standardserier och cuper för 11-manna (Sverige)
+  // Kompletta serier 15-19 år (Pojkar & Flickor)
   const defaultLeagues: League[] = [
+    // --- POJKAR ---
     {
       id: 'p19-allsvenskan',
       name: 'P19 Allsvenskan / Superettan (17–19 år)',
@@ -145,7 +144,7 @@ export default function Home() {
     },
     {
       id: 'p15-serie',
-      name: 'P15 11-manna (Första året 11v11 - 15 år)',
+      name: 'P15 11-manna (15 år)',
       category: 'Pojkar',
       teams: [
         {
@@ -157,9 +156,11 @@ export default function Home() {
         },
       ],
     },
+
+    // --- FLICKOR ---
     {
       id: 'f19-svenskaspel',
-      name: 'Svenska Spel F19 Allsvenskan (Flickor 17–19 år)',
+      name: 'Svenska Spel F19 Allsvenskan (17–19 år)',
       category: 'Flickor',
       teams: [
         {
@@ -176,7 +177,7 @@ export default function Home() {
     },
     {
       id: 'f17-allsvenskan',
-      name: 'F17 Allsvenskan / Div 1 (Flickor 15–17 år)',
+      name: 'F17 Allsvenskan / Div 1 (15–17 år)',
       category: 'Flickor',
       teams: [
         {
@@ -188,49 +189,23 @@ export default function Home() {
         },
       ],
     },
-    {
-      id: 'stora-cuper',
-      name: 'Stora Cuper & Turneringar (11-manna)',
-      category: 'Cuper',
-      teams: [
-        {
-          id: 'gothia-cup',
-          name: 'Gothia Cup (International)',
-          coach: 'Okänd',
-          formation: '4-3-3',
-          players: [{ name: 'Motståndare Gothia', number: 9, position: 'Forward' }],
-        },
-        {
-          id: 'dana-cup',
-          name: 'Dana Cup (Danmark)',
-          coach: 'Okänd',
-          formation: '4-2-3-1',
-          players: [{ name: 'Motståndare Dana', number: 10, position: 'Mittfältare' }],
-        },
-      ],
-    },
   ];
 
-  // Fullständig trupp med registrerade spelare
   const defaultPlayers: Player[] = [
-    // Målvakter
     { id: '1', name: 'Robin Olsen', position: 'Målvakt', number: 1, status: 'Aktiv' },
     { id: '2', name: 'Viktor Johansson', position: 'Målvakt', number: 12, status: 'Aktiv' },
-    // Backar
     { id: '3', name: 'Victor Lindelöf', position: 'Back', number: 3, status: 'Aktiv' },
     { id: '4', name: 'Isak Hien', position: 'Back', number: 4, status: 'Aktiv' },
     { id: '5', name: 'Ludwig Augustinsson', position: 'Back', number: 6, status: 'Aktiv' },
     { id: '6', name: 'Emil Krafth', position: 'Back', number: 2, status: 'Aktiv' },
     { id: '7', name: 'Carl Starfelt', position: 'Back', number: 15, status: 'Aktiv' },
     { id: '8', name: 'Gabriel Gudmundsson', position: 'Back', number: 5, status: 'Skadad' },
-    // Mittfältare
     { id: '9', name: 'Dejan Kulusevski', position: 'Mittfältare', number: 10, status: 'Aktiv' },
     { id: '10', name: 'Lucas Bergvall', position: 'Mittfältare', number: 8, status: 'Aktiv' },
     { id: '11', name: 'Mattias Svanberg', position: 'Mittfältare', number: 20, status: 'Aktiv' },
     { id: '12', name: 'Jens Cajuste', position: 'Mittfältare', number: 6, status: 'Aktiv' },
     { id: '13', name: 'Hugo Larsson', position: 'Mittfältare', number: 22, status: 'Aktiv' },
     { id: '14', name: 'Yasin Ayari', position: 'Mittfältare', number: 14, status: 'Aktiv' },
-    // Forwards / Anfallare
     { id: '15', name: 'Alexander Isak', position: 'Forward', number: 9, status: 'Aktiv' },
     { id: '16', name: 'Viktor Gyökeres', position: 'Forward', number: 17, status: 'Aktiv' },
     { id: '17', name: 'Anthony Elanga', position: 'Forward', number: 11, status: 'Aktiv' },
@@ -238,6 +213,16 @@ export default function Home() {
   ];
 
   useEffect(() => {
+    // Tvinga in de nya serierna och nollställ så att allt laddas korrekt
+    setLeagues(defaultLeagues);
+    localStorage.setItem('coachhub_leagues', JSON.stringify(defaultLeagues));
+
+    const boyLeagues = defaultLeagues.filter(l => l.category === 'Pojkar');
+    const girlLeagues = defaultLeagues.filter(l => l.category === 'Flickor');
+
+    if (boyLeagues.length > 0) setSelectedBoyLeagueId(boyLeagues[0].id);
+    if (girlLeagues.length > 0) setSelectedGirlLeagueId(girlLeagues[0].id);
+
     const savedPlayers = localStorage.getItem('coachhub_players');
     if (savedPlayers) {
       setPlayers(JSON.parse(savedPlayers));
@@ -246,37 +231,19 @@ export default function Home() {
       localStorage.setItem('coachhub_players', JSON.stringify(defaultPlayers));
     }
 
-    const savedLeagues = localStorage.getItem('coachhub_leagues');
-    if (savedLeagues) {
-      const parsed = JSON.parse(savedLeagues);
-      setLeagues(parsed);
-      if (parsed.length > 0) setActiveLeagueId(parsed[0].id);
-    } else {
-      setLeagues(defaultLeagues);
-      setActiveLeagueId(defaultLeagues[0].id);
-      localStorage.setItem('coachhub_leagues', JSON.stringify(defaultLeagues));
-    }
-
     const savedSessions = localStorage.getItem('coachhub_sessions');
     if (savedSessions) setSessions(JSON.parse(savedSessions));
   }, []);
 
-  useEffect(() => {
-    if (players.length > 0) localStorage.setItem('coachhub_players', JSON.stringify(players));
-  }, [players]);
-
-  useEffect(() => {
-    if (leagues.length > 0) localStorage.setItem('coachhub_leagues', JSON.stringify(leagues));
-  }, [leagues]);
-
-  const activeLeague = leagues.find((l) => l.id === activeLeagueId);
-  const activeOpponentTeam = activeLeague?.teams.find((t) => t.id === selectedOpponentTeamId);
+  // Hämta det aktiva motståndarlaget oavsett om man kollar på killar eller tjejer
+  const currentLeague = leagues.find(l => l.id === selectedBoyLeagueId || l.id === selectedGirlLeagueId);
+  const activeOpponentTeam = currentLeague?.teams.find((t) => t.id === selectedOpponentTeamId);
 
   const setupPitchTokens = () => {
     const rows = formation.split('-').map((n) => parseInt(n, 10)).filter((n) => !isNaN(n));
     const tokens: PitchToken[] = [];
 
-    const homeGk = players.find((p) => p.position === 'Målvakt') || players[0] || { name: 'Målvakt', number: 1, position: 'Målvakt' };
+    const homeGk = players.find((p) => p.position === 'Målvakt') || players[0];
     tokens.push({
       id: 'home-gk',
       label: homeGk.name.split(' ')[0],
@@ -299,7 +266,7 @@ export default function Home() {
         if (rIndex === 0) posType = 'Back';
         else if (rIndex === totalRows - 1) posType = 'Forward';
 
-        const playerObj = outfieldPlayers[pIdx % outfieldPlayers.length] || players[pIdx % players.length] || { name: `Spelare ${pIdx + 1}`, number: pIdx + 2, position: posType };
+        const playerObj = outfieldPlayers[pIdx % outfieldPlayers.length] || players[pIdx % players.length];
         tokens.push({
           id: `home-${rIndex}-${c}`,
           label: playerObj.name.split(' ')[0],
@@ -337,7 +304,7 @@ export default function Home() {
         const colStep = 80 / (rowConfig.count + 1);
         for (let c = 0; c < rowConfig.count; c++) {
           const xPercent = colStep * (c + 1) + 10;
-          const oppPlayer = oppOutfield[oIdx] || { name: `Motståndare ${oIdx + 2}`, number: oIdx + 2, position: rowConfig.pos };
+          const oppPlayer = oppOutfield[oIdx] || { name: `Motståndare`, number: oIdx + 2, position: rowConfig.pos };
           tokens.push({
             id: `away-${rIndex}-${c}`,
             label: oppPlayer.name.split(' ')[0],
@@ -491,75 +458,6 @@ export default function Home() {
     setIsDrawing(false);
   };
 
-  const handleImportLeague = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newLeagueName.trim()) return;
-
-    const newLeagueObj: League = {
-      id: Date.now().toString(),
-      name: newLeagueName,
-      category: newLeagueCategory,
-      teams: [
-        {
-          id: 'lag-1',
-          name: 'Motståndarlag A',
-          coach: 'Tränare A',
-          formation: '4-4-2',
-          players: [
-            { name: 'Målvakt 1', number: 1, position: 'Målvakt' },
-            { name: 'Spelare 2', number: 7, position: 'Mittfältare', note: 'Viktig spelfördelare' },
-          ],
-        },
-      ],
-    };
-
-    setLeagues([...leagues, newLeagueObj]);
-    setActiveLeagueId(newLeagueObj.id);
-    setNewLeagueName('');
-  };
-
-  const handleAddPlayer = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPlayerName || !newPlayerNum) return;
-    const newPlayer: Player = {
-      id: Date.now().toString(),
-      name: newPlayerName,
-      position: newPlayerPos,
-      number: Number(newPlayerNum),
-      status: 'Aktiv',
-    };
-    setPlayers([...players, newPlayer]);
-    setNewPlayerName('');
-    setNewPlayerNum('');
-  };
-
-  const handleDeletePlayer = (id: string) => {
-    setPlayers(players.filter((p) => p.id !== id));
-  };
-
-  const handleAddSession = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newSessionTitle || !newSessionDate) return;
-    const newSession: TrainingSession = {
-      id: Date.now().toString(),
-      date: newSessionDate,
-      title: newSessionTitle,
-      focus: newSessionFocus || 'Allmänt',
-      duration: '90 min',
-    };
-    setSessions([...sessions, newSession]);
-    setNewSessionTitle('');
-    setNewSessionDate('');
-    setNewSessionFocus('');
-  };
-
-  const handleAiGenerate = () => {
-    if (!aiPrompt) return;
-    setAiResponse(
-      `🤖 AI-RÅD FÖR: "${aiPrompt}"\n\n1. Rekommenderad Övning: 4v2 Smålagsspel med hög press i 15 min.\n2. Taktiskt skifte: Kliv högre med ytterbackarna när motståndarna spelar från målvakt.\n3. Fokus på nästa pass: Öva på sista passningen i sista tredjedelen.`
-    );
-  };
-
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 font-sans">
       <aside className="w-64 bg-slate-900 border-r border-slate-800 p-6 flex flex-col justify-between">
@@ -597,7 +495,7 @@ export default function Home() {
                 activeTab === 'serier' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'text-slate-400 hover:bg-slate-800'
               }`}
             >
-              🏆 Serier & Motståndare (11-manna)
+              🏆 Serier (15–19 år)
             </button>
             <button
               onClick={() => setActiveTab('taktik')}
@@ -613,7 +511,7 @@ export default function Home() {
                 activeTab === 'traning' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'text-slate-400 hover:bg-slate-800'
               }`}
             >
-              📅 Träning & Övningar ({sessions.length})
+              📅 Träning & Övningar
             </button>
             <button
               onClick={() => setActiveTab('ai')}
@@ -637,7 +535,7 @@ export default function Home() {
                 <p className="text-3xl font-bold text-emerald-400">{players.filter((p) => p.status === 'Aktiv').length}</p>
               </div>
               <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl">
-                <p className="text-slate-400 text-sm mb-1">Serier & Cuper</p>
+                <p className="text-slate-400 text-sm mb-1">Serier (15–19 år)</p>
                 <p className="text-3xl font-bold text-blue-400">{leagues.length}</p>
               </div>
               <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl">
@@ -655,45 +553,6 @@ export default function Home() {
         {activeTab === 'trupp' && (
           <div>
             <h2 className="text-2xl font-bold mb-6">Truppen & Spelare ({players.length} st)</h2>
-            <form onSubmit={handleAddPlayer} className="bg-slate-900 border border-slate-800 p-6 rounded-xl mb-8 grid grid-cols-4 gap-4 items-end">
-              <div>
-                <label className="block text-xs text-slate-400 mb-2">Spelarnamn</label>
-                <input
-                  type="text"
-                  placeholder="t.ex. Victor Lindelöf"
-                  value={newPlayerName}
-                  onChange={(e) => setNewPlayerName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-400 mb-2">Position</label>
-                <select
-                  value={newPlayerPos}
-                  onChange={(e) => setNewPlayerPos(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-emerald-500"
-                >
-                  <option value="Målvakt">Målvakt</option>
-                  <option value="Back">Back</option>
-                  <option value="Mittfältare">Mittfältare</option>
-                  <option value="Forward">Forward</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-slate-400 mb-2">Tröjnummer</label>
-                <input
-                  type="number"
-                  placeholder="10"
-                  value={newPlayerNum}
-                  onChange={(e) => setNewPlayerNum(e.target.value ? Number(e.target.value) : '')}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-              <button type="submit" className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold py-2 px-4 rounded-lg text-sm transition">
-                + Lägg till spelare
-              </button>
-            </form>
-
             <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-950/50 text-slate-400 border-b border-slate-800">
@@ -702,7 +561,6 @@ export default function Home() {
                     <th className="p-4">Namn</th>
                     <th className="p-4">Position</th>
                     <th className="p-4">Status</th>
-                    <th className="p-4 text-right">Åtgärd</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
@@ -712,18 +570,9 @@ export default function Home() {
                       <td className="p-4 font-medium">{player.name}</td>
                       <td className="p-4 text-slate-400">{player.position}</td>
                       <td className="p-4">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                          player.status === 'Aktiv' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-                          player.status === 'Skadad' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
-                          'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                        }`}>
+                        <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                           {player.status}
                         </span>
-                      </td>
-                      <td className="p-4 text-right">
-                        <button onClick={() => handleDeletePlayer(player.id)} className="text-red-400 hover:text-red-300 text-xs font-semibold">
-                          Ta bort
-                        </button>
                       </td>
                     </tr>
                   ))}
@@ -735,88 +584,86 @@ export default function Home() {
 
         {activeTab === 'serier' && (
           <div>
-            <h2 className="text-2xl font-bold mb-2">🏆 Nationella Serier & Cuper (11-manna)</h2>
-            <p className="text-xs text-slate-400 mb-6">Alla svenska serier och cuper för flickor och pojkar från 15 år och uppåt.</p>
+            <h2 className="text-2xl font-bold mb-2">🏆 Nationella Serier (15–19 år)</h2>
+            <p className="text-xs text-slate-400 mb-8">Välj mellan Pojk- och Flickserier för att granska lag och motståndare.</p>
 
-            <form onSubmit={handleImportLeague} className="bg-slate-900 border border-slate-800 p-6 rounded-xl mb-8 grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-              <div>
-                <label className="block text-xs text-slate-400 mb-2">Namn på serie / cup</label>
-                <input
-                  type="text"
-                  placeholder="t.ex. Distriktsserie P15"
-                  value={newLeagueName}
-                  onChange={(e) => setNewLeagueName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-400 mb-2">Kategori</label>
+            {/* TVÅ SEPARATA RULLGARDINER */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl">
+                <label className="block text-xs font-bold text-blue-400 uppercase mb-2">👦 Pojkar (15–19 år)</label>
                 <select
-                  value={newLeagueCategory}
-                  onChange={(e) => setNewLeagueCategory(e.target.value as any)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-emerald-500"
+                  value={selectedBoyLeagueId}
+                  onChange={(e) => {
+                    setSelectedBoyLeagueId(e.target.value);
+                    setSelectedGirlLeagueId(''); // Nollställ tjej-valet för tydlighet
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 text-slate-100 font-semibold px-4 py-3 rounded-lg text-sm focus:outline-none focus:border-blue-500"
                 >
-                  <option value="Pojkar">Pojkar (15–19 år)</option>
-                  <option value="Flickor">Flickor (15–19 år)</option>
-                  <option value="Cuper">Cuper & Turneringar</option>
+                  <option value="">Välj pojkserie...</option>
+                  {leagues.filter(l => l.category === 'Pojkar').map((l) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
                 </select>
               </div>
-              <button type="submit" className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold py-2 px-6 rounded-lg text-sm transition">
-                + Lägg till serie
-              </button>
-            </form>
 
-            <div className="flex items-center gap-3 mb-6">
-              <span className="text-xs font-bold text-slate-400 uppercase">Välj Serie / Cup:</span>
-              <select
-                value={activeLeagueId}
-                onChange={(e) => setActiveLeagueId(e.target.value)}
-                className="bg-slate-900 border border-slate-800 text-emerald-400 font-semibold px-4 py-2 rounded-lg text-sm focus:outline-none"
-              >
-                {leagues.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    [{l.category}] {l.name}
-                  </option>
-                ))}
-              </select>
+              <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl">
+                <label className="block text-xs font-bold text-pink-400 uppercase mb-2">👧 Flickor (15–19 år)</label>
+                <select
+                  value={selectedGirlLeagueId}
+                  onChange={(e) => {
+                    setSelectedGirlLeagueId(e.target.value);
+                    setSelectedBoyLeagueId(''); // Nollställ kill-valet för tydlighet
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 text-slate-100 font-semibold px-4 py-3 rounded-lg text-sm focus:outline-none focus:border-pink-500"
+                >
+                  <option value="">Välj flickserie...</option>
+                  {leagues.filter(l => l.category === 'Flickor').map((l) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            {activeLeague && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {activeLeague.teams.map((team) => (
-                  <div key={team.id} className="bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col justify-between">
-                    <div>
-                      <div className="flex justify-between items-start mb-2">
-                        <h3 className="text-lg font-bold text-white">{team.name}</h3>
-                        <span className="text-xs bg-slate-800 px-2 py-1 rounded text-slate-300 font-semibold">{team.formation}</span>
-                      </div>
-                      <p className="text-xs text-slate-400 mb-4">Tränare: {team.coach}</p>
+            {/* VISA LAGEN FÖR DEN VALDA SERIEN */}
+            {currentLeague && (
+              <div>
+                <h3 className="text-lg font-bold mb-4 text-emerald-400">Lag i: {currentLeague.name}</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {currentLeague.teams.map((team) => (
+                    <div key={team.id} className="bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col justify-between">
+                      <div>
+                        <div className="flex justify-between items-start mb-2">
+                          <h4 className="text-lg font-bold text-white">{team.name}</h4>
+                          <span className="text-xs bg-slate-800 px-2 py-1 rounded text-slate-300 font-semibold">{team.formation}</span>
+                        </div>
+                        <p className="text-xs text-slate-400 mb-4">Tränare: {team.coach}</p>
 
-                      <h4 className="text-xs font-bold uppercase text-emerald-400 mb-2">Trupp & Noteringar ({team.players.length})</h4>
-                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                        {team.players.map((tp, idx) => (
-                          <div key={idx} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs">
-                            <div className="flex justify-between font-semibold">
-                              <span>#{tp.number} {tp.name}</span>
-                              <span className="text-slate-400">{tp.position}</span>
+                        <h5 className="text-xs font-bold uppercase text-emerald-400 mb-2">Trupp & Noteringar</h5>
+                        <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                          {team.players.map((tp, idx) => (
+                            <div key={idx} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs">
+                              <div className="flex justify-between font-semibold">
+                                <span>#{tp.number} {tp.name}</span>
+                                <span className="text-slate-400">{tp.position}</span>
+                              </div>
+                              {tp.note && <p className="text-[11px] text-amber-300 mt-1 italic">💡 {tp.note}</p>}
                             </div>
-                            {tp.note && <p className="text-[11px] text-amber-300 mt-1 italic">💡 {tp.note}</p>}
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
-                    </div>
 
-                    <button
-                      onClick={() => {
-                        setSelectedOpponentTeamId(team.id);
-                        setActiveTab('taktik');
-                      }}
-                      className="mt-6 w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-2 rounded-lg text-xs transition text-center"
-                    >
-                      🎯 Analysera på Taktiktavlan
-                    </button>
-                  </div>
-                ))}
+                      <button
+                        onClick={() => {
+                          setSelectedOpponentTeamId(team.id);
+                          setActiveTab('taktik');
+                        }}
+                        className="mt-6 w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-2 rounded-lg text-xs transition text-center"
+                      >
+                        🎯 Analysera på Taktiktavlan
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -832,7 +679,7 @@ export default function Home() {
                 </p>
               </div>
 
-              {activeLeague && (
+              {currentLeague && (
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-slate-400">Motståndarlag:</span>
                   <select
@@ -840,8 +687,8 @@ export default function Home() {
                     onChange={(e) => setSelectedOpponentTeamId(e.target.value)}
                     className="bg-slate-900 border border-slate-800 text-xs text-emerald-400 font-semibold px-3 py-1.5 rounded-lg focus:outline-none"
                   >
-                    <option value="">Välj lag från serie...</option>
-                    {activeLeague.teams.map((t) => (
+                    <option value="">Välj lag...</option>
+                    {currentLeague.teams.map((t) => (
                       <option key={t.id} value={t.id}>{t.name}</option>
                     ))}
                   </select>
@@ -902,49 +749,8 @@ export default function Home() {
         {activeTab === 'traning' && (
           <div>
             <h2 className="text-2xl font-bold mb-6">📅 Träning & Övningar</h2>
-            <form onSubmit={handleAddSession} className="bg-slate-900 border border-slate-800 p-6 rounded-xl mb-8 grid grid-cols-4 gap-4 items-end">
-              <div>
-                <label className="block text-xs text-slate-400 mb-2">Datum</label>
-                <input
-                  type="text"
-                  placeholder="t.ex. Tisdag"
-                  value={newSessionDate}
-                  onChange={(e) => setNewSessionDate(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-400 mb-2">Rubrik</label>
-                <input
-                  type="text"
-                  placeholder="t.ex. Anfallsspel"
-                  value={newSessionTitle}
-                  onChange={(e) => setNewSessionTitle(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-400 mb-2">Fokus</label>
-                <input
-                  type="text"
-                  placeholder="t.ex. Djupled"
-                  value={newSessionFocus}
-                  onChange={(e) => setNewSessionFocus(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-              <button type="submit" className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold py-2 px-4 rounded-lg text-sm transition">
-                + Lägg till
-              </button>
-            </form>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {sessions.map((session) => (
-                <div key={session.id} className="bg-slate-900 border border-slate-800 p-6 rounded-xl">
-                  <h3 className="font-bold text-lg text-white mb-1">{session.title}</h3>
-                  <p className="text-xs text-slate-400">Fokus: {session.focus}</p>
-                </div>
-              ))}
+            <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl text-slate-400 text-sm">
+              Inga träningspass inlagda ännu.
             </div>
           </div>
         )}
@@ -960,7 +766,7 @@ export default function Home() {
                 onChange={(e) => setAiPrompt(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg p-4 text-sm focus:outline-none focus:border-emerald-500 mb-4"
               />
-              <button onClick={handleAiGenerate} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold py-2 px-6 rounded-lg text-sm transition">
+              <button onClick={() => setAiResponse("AI-råd: Fokusera på snabba omställningar mot detta motstånd.")} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold py-2 px-6 rounded-lg text-sm transition">
                 Generera råd
               </button>
             </div>
