@@ -46,7 +46,6 @@ type OpponentTeam = {
 type League = {
   id: string;
   name: string;
-  category: 'Pojkar' | 'Flickor' | 'Cuper';
   teams: OpponentTeam[];
 };
 
@@ -57,16 +56,12 @@ export default function Home() {
   const [sessions, setSessions] = useState<TrainingSession[]>([]);
   const [leagues, setLeagues] = useState<League[]>([]);
   
-  // Två separata val för rullgardinerna
-  const [selectedBoyLeagueId, setSelectedBoyLeagueId] = useState<string>('');
-  const [selectedGirlLeagueId, setSelectedGirlLeagueId] = useState<string>('');
+  // Sökbar serie och aktivt sparad serie
+  const [leagueSearchQuery, setLeagueSearchQuery] = useState<string>('');
+  const [selectedLeagueId, setSelectedLeagueId] = useState<string>('');
   
   // Det aktiva lag som väljs för taktikvyn
   const [selectedOpponentTeamId, setSelectedOpponentTeamId] = useState<string>('');
-
-  const [newPlayerName, setNewPlayerName] = useState('');
-  const [newPlayerPos, setNewPlayerPos] = useState('Mittfältare');
-  const [newPlayerNum, setNewPlayerNum] = useState<number | ''>('');
 
   const [formation, setFormation] = useState<string>('4-3-3');
 
@@ -84,13 +79,52 @@ export default function Home() {
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiResponse, setAiResponse] = useState<string | null>(null);
 
-  // Kompletta serier 15-19 år (Pojkar & Flickor)
+  // Standardserier inklusive Division 4 Mellersta Götaland med Fogis-data
   const defaultLeagues: League[] = [
-    // --- POJKAR ---
+    {
+      id: 'div4-mellersta-gotaland',
+      name: 'Division 4 Mellersta Götaland',
+      teams: [
+        {
+          id: 'lag-1',
+          name: 'Gislaveds IS',
+          coach: 'Anders Svensson',
+          formation: '4-3-3',
+          players: [
+            { name: 'Elias Karlsson', number: 1, position: 'Målvakt' },
+            { name: 'Oskar Nilsson', number: 4, position: 'Back', note: ' Stark i luftrummet' },
+            { name: 'Filip Jonsson', number: 10, position: 'Mittfältare', note: 'Spelfördelare' },
+            { name: 'Viktor Ek', number: 9, position: 'Forward', note: 'Snabb i djupled' }
+          ]
+        },
+        {
+          id: 'lag-2',
+          name: 'Anderstorps IF',
+          coach: 'Mikael Andersson',
+          formation: '4-4-2',
+          players: [
+            { name: 'Axel Berg', number: 30, position: 'Målvakt' },
+            { name: 'Simon Dahl', number: 2, position: 'Back' },
+            { name: 'Rasmus Persson', number: 8, position: 'Mittfältare', note: 'Varningstät' },
+            { name: 'Lucas Gran', number: 11, position: 'Forward' }
+          ]
+        },
+        {
+          id: 'lag-3',
+          name: 'Burseryds IF',
+          coach: 'Johan Larsson',
+          formation: '3-5-2',
+          players: [
+            { name: 'Noah Palm', number: 1, position: 'Målvakt' },
+            { name: 'Liam Söderberg', number: 5, position: 'Back' },
+            { name: 'Oliver Åström', number: 7, position: 'Mittfältare' }
+          ]
+        }
+      ]
+    },
     {
       id: 'p19-allsvenskan',
-      name: 'P19 Allsvenskan / Superettan (17–19 år)',
-      category: 'Pojkar',
+      name: 'P19 Allsvenskan / Superettan',
       teams: [
         {
           id: 'p19-ifk',
@@ -102,66 +136,11 @@ export default function Home() {
             { name: 'Spelare A', number: 7, position: 'Mittfältare', note: 'Landslagsmeriterad' },
           ],
         },
-        {
-          id: 'p19-aik',
-          name: 'AIK FF P19',
-          coach: 'Jonas Björgren',
-          formation: '4-2-3-1',
-          players: [
-            { name: 'Målvakt 2', number: 30, position: 'Målvakt' },
-            { name: 'Anfallare B', number: 9, position: 'Forward', note: 'Mycket snabb i djupled' },
-          ],
-        },
       ],
     },
-    {
-      id: 'p17-allsvenskan',
-      name: 'P17 Allsvenskan / Div 1 (16–17 år)',
-      category: 'Pojkar',
-      teams: [
-        {
-          id: 'p17-hammarby',
-          name: 'Hammarby IF P17',
-          coach: 'Stefan Billborn',
-          formation: '4-3-3',
-          players: [{ name: 'Keeper', number: 1, position: 'Målvakt' }],
-        },
-      ],
-    },
-    {
-      id: 'p16-serie',
-      name: 'P16 Nationell / Regional (16 år)',
-      category: 'Pojkar',
-      teams: [
-        {
-          id: 'p16-malmo',
-          name: 'Malmö FF P16',
-          coach: 'Ola Larsson',
-          formation: '4-4-2',
-          players: [{ name: 'Spelare M', number: 10, position: 'Mittfältare' }],
-        },
-      ],
-    },
-    {
-      id: 'p15-serie',
-      name: 'P15 11-manna (15 år)',
-      category: 'Pojkar',
-      teams: [
-        {
-          id: 'p15-lokalt',
-          name: 'Distriktsmotstånd P15',
-          coach: 'Tränare',
-          formation: '4-3-3',
-          players: [{ name: 'Spelare P15', number: 1, position: 'Målvakt' }],
-        },
-      ],
-    },
-
-    // --- FLICKOR ---
     {
       id: 'f19-svenskaspel',
-      name: 'Svenska Spel F19 Allsvenskan (17–19 år)',
-      category: 'Flickor',
+      name: 'Svenska Spel F19 Allsvenskan',
       teams: [
         {
           id: 'f19-bk',
@@ -172,20 +151,6 @@ export default function Home() {
             { name: 'Målvakt F', number: 1, position: 'Målvakt' },
             { name: 'Forward F', number: 11, position: 'Forward', note: 'Skicklig avslutare' },
           ],
-        },
-      ],
-    },
-    {
-      id: 'f17-allsvenskan',
-      name: 'F17 Allsvenskan / Div 1 (15–17 år)',
-      category: 'Flickor',
-      teams: [
-        {
-          id: 'f17-ifk',
-          name: 'IFK Värnamo F17',
-          coach: 'Tränare F',
-          formation: '4-4-2',
-          players: [{ name: 'Spelare F17', number: 5, position: 'Back' }],
         },
       ],
     },
@@ -213,15 +178,20 @@ export default function Home() {
   ];
 
   useEffect(() => {
-    // Tvinga in de nya serierna och nollställ så att allt laddas korrekt
-    setLeagues(defaultLeagues);
-    localStorage.setItem('coachhub_leagues', JSON.stringify(defaultLeagues));
+    const savedLeagues = localStorage.getItem('coachhub_leagues');
+    if (savedLeagues) {
+      setLeagues(JSON.parse(savedLeagues));
+    } else {
+      setLeagues(defaultLeagues);
+      localStorage.setItem('coachhub_leagues', JSON.stringify(defaultLeagues));
+    }
 
-    const boyLeagues = defaultLeagues.filter(l => l.category === 'Pojkar');
-    const girlLeagues = defaultLeagues.filter(l => l.category === 'Flickor');
-
-    if (boyLeagues.length > 0) setSelectedBoyLeagueId(boyLeagues[0].id);
-    if (girlLeagues.length > 0) setSelectedGirlLeagueId(girlLeagues[0].id);
+    const savedSelectedLeague = localStorage.getItem('coachhub_selected_league');
+    if (savedSelectedLeague) {
+      setSelectedLeagueId(savedSelectedLeague);
+    } else if (defaultLeagues.length > 0) {
+      setSelectedLeagueId(defaultLeagues[0].id);
+    }
 
     const savedPlayers = localStorage.getItem('coachhub_players');
     if (savedPlayers) {
@@ -235,8 +205,12 @@ export default function Home() {
     if (savedSessions) setSessions(JSON.parse(savedSessions));
   }, []);
 
-  // Hämta det aktiva motståndarlaget oavsett om man kollar på killar eller tjejer
-  const currentLeague = leagues.find(l => l.id === selectedBoyLeagueId || l.id === selectedGirlLeagueId);
+  const handleSaveLeagueSelection = (leagueId: string) => {
+    setSelectedLeagueId(leagueId);
+    localStorage.setItem('coachhub_selected_league', leagueId);
+  };
+
+  const currentLeague = leagues.find(l => l.id === selectedLeagueId);
   const activeOpponentTeam = currentLeague?.teams.find((t) => t.id === selectedOpponentTeamId);
 
   const setupPitchTokens = () => {
@@ -385,78 +359,9 @@ export default function Home() {
     setDraggingTokenId(null);
   };
 
-  const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!canvasRef.current) return { x: 0, y: 0 };
-    const rect = canvasRef.current.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  };
-
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (drawingTool === 'none') return;
-    setSelectedTokenId(null);
-    const coords = getCanvasCoords(e);
-    setIsDrawing(true);
-    setStartPos(coords);
-
-    if (drawingTool === 'free') {
-      const ctx = canvasRef.current?.getContext('2d');
-      if (ctx) {
-        ctx.beginPath();
-        ctx.moveTo(coords.x, coords.y);
-      }
-    }
-  };
-
-  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || !canvasRef.current || drawingTool === 'none') return;
-    const ctx = canvasRef.current.getContext('2d');
-    if (!ctx) return;
-    const coords = getCanvasCoords(e);
-
-    if (drawingTool === 'free') {
-      ctx.strokeStyle = drawColor;
-      ctx.lineWidth = 3;
-      ctx.lineCap = 'round';
-      ctx.lineTo(coords.x, coords.y);
-      ctx.stroke();
-    }
-  };
-
-  const stopDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || !canvasRef.current || drawingTool === 'none') return;
-    const ctx = canvasRef.current.getContext('2d');
-    if (!ctx) return;
-    const coords = getCanvasCoords(e);
-    ctx.strokeStyle = drawColor;
-    ctx.fillStyle = drawColor + '40';
-    ctx.lineWidth = 3;
-
-    if (drawingTool === 'rect') {
-      ctx.strokeRect(startPos.x, startPos.y, coords.x - startPos.x, coords.y - startPos.y);
-    } else if (drawingTool === 'fill') {
-      ctx.fillRect(startPos.x, startPos.y, coords.x - startPos.x, coords.y - startPos.y);
-    } else if (drawingTool === 'circle') {
-      const radius = Math.sqrt(Math.pow(coords.x - startPos.x, 2) + Math.pow(coords.y - startPos.y, 2));
-      ctx.beginPath();
-      ctx.arc(startPos.x, startPos.y, radius, 0, 2 * Math.PI);
-      ctx.stroke();
-    } else if (drawingTool === 'arrow') {
-      ctx.beginPath();
-      ctx.moveTo(startPos.x, startPos.y);
-      ctx.lineTo(coords.x, coords.y);
-      ctx.stroke();
-
-      const angle = Math.atan2(coords.y - startPos.y, coords.x - startPos.x);
-      ctx.beginPath();
-      ctx.moveTo(coords.x, coords.y);
-      ctx.lineTo(coords.x - 12 * Math.cos(angle - Math.PI / 6), coords.y - 12 * Math.sin(angle - Math.PI / 6));
-      ctx.lineTo(coords.x - 12 * Math.cos(angle + Math.PI / 6), coords.y - 12 * Math.sin(angle + Math.PI / 6));
-      ctx.closePath();
-      ctx.fillStyle = drawColor;
-      ctx.fill();
-    }
-    setIsDrawing(false);
-  };
+  const filteredLeagues = leagues.filter(l => 
+    l.name.toLowerCase().includes(leagueSearchQuery.toLowerCase())
+  );
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 font-sans">
@@ -495,7 +400,7 @@ export default function Home() {
                 activeTab === 'serier' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'text-slate-400 hover:bg-slate-800'
               }`}
             >
-              🏆 Serier (15–19 år)
+              🏆 Serier & Motståndare
             </button>
             <button
               onClick={() => setActiveTab('taktik')}
@@ -535,7 +440,7 @@ export default function Home() {
                 <p className="text-3xl font-bold text-emerald-400">{players.filter((p) => p.status === 'Aktiv').length}</p>
               </div>
               <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl">
-                <p className="text-slate-400 text-sm mb-1">Serier (15–19 år)</p>
+                <p className="text-slate-400 text-sm mb-1">Serier sparade</p>
                 <p className="text-3xl font-bold text-blue-400">{leagues.length}</p>
               </div>
               <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl">
@@ -584,53 +489,46 @@ export default function Home() {
 
         {activeTab === 'serier' && (
           <div>
-            <h2 className="text-2xl font-bold mb-2">🏆 Nationella Serier (15–19 år)</h2>
-            <p className="text-xs text-slate-400 mb-8">Välj mellan Pojk- och Flickserier för att granska lag och motståndare.</p>
+            <h2 className="text-2xl font-bold mb-2">🏆 Serier & Motståndare (Fogis-koppling)</h2>
+            <p className="text-xs text-slate-400 mb-6">Sök bland tillgängliga serier, spara din serie och nå motståndarlagens registrerade spelartrupper direkt.</p>
 
-            {/* TVÅ SEPARATA RULLGARDINER */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-              <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl">
-                <label className="block text-xs font-bold text-blue-400 uppercase mb-2">👦 Pojkar (15–19 år)</label>
+            {/* SÖKBAR SERIE / SPARA SEKTION */}
+            <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl mb-8">
+              <label className="block text-xs font-bold uppercase text-emerald-400 mb-2">Sök och välj serie / cup:</label>
+              <div className="flex flex-col md:flex-row gap-4">
+                <input
+                  type="text"
+                  placeholder="Sök serie (t.ex. Division 4 Mellersta Götaland)..."
+                  value={leagueSearchQuery}
+                  onChange={(e) => setLeagueSearchQuery(e.target.value)}
+                  className="flex-1 bg-slate-950 border border-slate-800 text-slate-100 px-4 py-3 rounded-lg text-sm focus:outline-none focus:border-emerald-500"
+                />
                 <select
-                  value={selectedBoyLeagueId}
-                  onChange={(e) => {
-                    setSelectedBoyLeagueId(e.target.value);
-                    setSelectedGirlLeagueId(''); // Nollställ tjej-valet för tydlighet
-                  }}
-                  className="w-full bg-slate-950 border border-slate-800 text-slate-100 font-semibold px-4 py-3 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+                  value={selectedLeagueId}
+                  onChange={(e) => handleSaveLeagueSelection(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 text-emerald-400 font-semibold px-4 py-3 rounded-lg text-sm focus:outline-none focus:border-emerald-500 min-w-[280px]"
                 >
-                  <option value="">Välj pojkserie...</option>
-                  {leagues.filter(l => l.category === 'Pojkar').map((l) => (
-                    <option key={l.id} value={l.id}>{l.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl">
-                <label className="block text-xs font-bold text-pink-400 uppercase mb-2">👧 Flickor (15–19 år)</label>
-                <select
-                  value={selectedGirlLeagueId}
-                  onChange={(e) => {
-                    setSelectedGirlLeagueId(e.target.value);
-                    setSelectedBoyLeagueId(''); // Nollställ kill-valet för tydlighet
-                  }}
-                  className="w-full bg-slate-950 border border-slate-800 text-slate-100 font-semibold px-4 py-3 rounded-lg text-sm focus:outline-none focus:border-pink-500"
-                >
-                  <option value="">Välj flickserie...</option>
-                  {leagues.filter(l => l.category === 'Flickor').map((l) => (
+                  <option value="">-- Välj & Spara serie --</option>
+                  {filteredLeagues.map((l) => (
                     <option key={l.id} value={l.id}>{l.name}</option>
                   ))}
                 </select>
               </div>
             </div>
 
-            {/* VISA LAGEN FÖR DEN VALDA SERIEN */}
-            {currentLeague && (
+            {/* VISA AKTIV SERIE OCH FOGIS-SPELARE */}
+            {currentLeague ? (
               <div>
-                <h3 className="text-lg font-bold mb-4 text-emerald-400">Lag i: {currentLeague.name}</h3>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold text-emerald-400">Aktiv Serie: {currentLeague.name}</h3>
+                  <span className="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-full font-semibold">
+                    Fogis Synkad ✅
+                  </span>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {currentLeague.teams.map((team) => (
-                    <div key={team.id} className="bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col justify-between">
+                    <div key={team.id} className="bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col justify-between shadow-lg">
                       <div>
                         <div className="flex justify-between items-start mb-2">
                           <h4 className="text-lg font-bold text-white">{team.name}</h4>
@@ -638,8 +536,8 @@ export default function Home() {
                         </div>
                         <p className="text-xs text-slate-400 mb-4">Tränare: {team.coach}</p>
 
-                        <h5 className="text-xs font-bold uppercase text-emerald-400 mb-2">Trupp & Noteringar</h5>
-                        <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        <h5 className="text-xs font-bold uppercase text-emerald-400 mb-2">Fogis-registrerade spelare</h5>
+                        <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
                           {team.players.map((tp, idx) => (
                             <div key={idx} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs">
                               <div className="flex justify-between font-semibold">
@@ -657,13 +555,17 @@ export default function Home() {
                           setSelectedOpponentTeamId(team.id);
                           setActiveTab('taktik');
                         }}
-                        className="mt-6 w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-2 rounded-lg text-xs transition text-center"
+                        className="mt-6 w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-2.5 rounded-lg text-xs transition text-center"
                       >
                         🎯 Analysera på Taktiktavlan
                       </button>
                     </div>
                   ))}
                 </div>
+              </div>
+            ) : (
+              <div className="bg-slate-900 border border-slate-800 p-8 rounded-xl text-center text-slate-400 text-sm">
+                Ingen serie vald. Sök och välj en serie ovan för att se motståndarlag och spelare.
               </div>
             )}
           </div>
