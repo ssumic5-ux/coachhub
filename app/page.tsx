@@ -56,11 +56,8 @@ export default function Home() {
   const [sessions, setSessions] = useState<TrainingSession[]>([]);
   const [leagues, setLeagues] = useState<League[]>([]);
   
-  // Sökbar serie och aktivt sparad serie
   const [leagueSearchQuery, setLeagueSearchQuery] = useState<string>('');
   const [selectedLeagueId, setSelectedLeagueId] = useState<string>('');
-  
-  // Det aktiva lag som väljs för taktikvyn
   const [selectedOpponentTeamId, setSelectedOpponentTeamId] = useState<string>('');
 
   const [formation, setFormation] = useState<string>('4-3-3');
@@ -70,16 +67,9 @@ export default function Home() {
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
   const pitchRef = useRef<HTMLDivElement | null>(null);
 
-  const [drawingTool, setDrawingTool] = useState<'free' | 'arrow' | 'circle' | 'rect' | 'fill' | 'none'>('none');
-  const [drawColor, setDrawColor] = useState<string>('#ffffff');
-  const [isDrawing, setIsDrawing] = useState<boolean>(false);
-  const [startPos, setStartPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiResponse, setAiResponse] = useState<string | null>(null);
 
-  // Standardserier inklusive Division 4 Mellersta Götaland med Fogis-data
   const defaultLeagues: League[] = [
     {
       id: 'div4-mellersta-gotaland',
@@ -178,31 +168,37 @@ export default function Home() {
   ];
 
   useEffect(() => {
-    const savedLeagues = localStorage.getItem('coachhub_leagues');
-    if (savedLeagues) {
-      setLeagues(JSON.parse(savedLeagues));
-    } else {
+    try {
+      const savedLeagues = localStorage.getItem('coachhub_leagues');
+      if (savedLeagues) {
+        setLeagues(JSON.parse(savedLeagues));
+      } else {
+        setLeagues(defaultLeagues);
+        localStorage.setItem('coachhub_leagues', JSON.stringify(defaultLeagues));
+      }
+
+      const savedSelectedLeague = localStorage.getItem('coachhub_selected_league');
+      if (savedSelectedLeague) {
+        setSelectedLeagueId(savedSelectedLeague);
+      } else if (defaultLeagues.length > 0) {
+        setSelectedLeagueId(defaultLeagues[0].id);
+      }
+
+      const savedPlayers = localStorage.getItem('coachhub_players');
+      if (savedPlayers) {
+        setPlayers(JSON.parse(savedPlayers));
+      } else {
+        setPlayers(defaultPlayers);
+        localStorage.setItem('coachhub_players', JSON.stringify(defaultPlayers));
+      }
+
+      const savedSessions = localStorage.getItem('coachhub_sessions');
+      if (savedSessions) setSessions(JSON.parse(savedSessions));
+    } catch (e) {
+      console.error(e);
       setLeagues(defaultLeagues);
-      localStorage.setItem('coachhub_leagues', JSON.stringify(defaultLeagues));
-    }
-
-    const savedSelectedLeague = localStorage.getItem('coachhub_selected_league');
-    if (savedSelectedLeague) {
-      setSelectedLeagueId(savedSelectedLeague);
-    } else if (defaultLeagues.length > 0) {
-      setSelectedLeagueId(defaultLeagues[0].id);
-    }
-
-    const savedPlayers = localStorage.getItem('coachhub_players');
-    if (savedPlayers) {
-      setPlayers(JSON.parse(savedPlayers));
-    } else {
       setPlayers(defaultPlayers);
-      localStorage.setItem('coachhub_players', JSON.stringify(defaultPlayers));
     }
-
-    const savedSessions = localStorage.getItem('coachhub_sessions');
-    if (savedSessions) setSessions(JSON.parse(savedSessions));
   }, []);
 
   const handleSaveLeagueSelection = (leagueId: string) => {
@@ -210,26 +206,28 @@ export default function Home() {
     localStorage.setItem('coachhub_selected_league', leagueId);
   };
 
-  const currentLeague = leagues.find(l => l.id === selectedLeagueId);
-  const activeOpponentTeam = currentLeague?.teams.find((t) => t.id === selectedOpponentTeamId);
+  const currentLeague = leagues.find(l => l?.id === selectedLeagueId);
+  const activeOpponentTeam = currentLeague?.teams?.find((t) => t?.id === selectedOpponentTeamId);
 
   const setupPitchTokens = () => {
     const rows = formation.split('-').map((n) => parseInt(n, 10)).filter((n) => !isNaN(n));
     const tokens: PitchToken[] = [];
 
     const homeGk = players.find((p) => p.position === 'Målvakt') || players[0];
-    tokens.push({
-      id: 'home-gk',
-      label: homeGk.name.split(' ')[0],
-      number: homeGk.number,
-      x: 50,
-      y: 92,
-      team: 'home',
-      positionType: 'Målvakt',
-    });
+    if (homeGk) {
+      tokens.push({
+        id: 'home-gk',
+        label: homeGk.name ? homeGk.name.split(' ')[0] : 'MV',
+        number: homeGk.number || 1,
+        x: 50,
+        y: 92,
+        team: 'home',
+        positionType: 'Målvakt',
+      });
+    }
 
     let pIdx = 0;
-    const outfieldPlayers = players.filter((p) => p.id !== homeGk.id);
+    const outfieldPlayers = players.filter((p) => p?.id !== homeGk?.id);
     const totalRows = rows.length;
     rows.forEach((countInRow, rIndex) => {
       const yPercent = 80 - (rIndex * 45) / Math.max(1, totalRows - 1);
@@ -241,25 +239,27 @@ export default function Home() {
         else if (rIndex === totalRows - 1) posType = 'Forward';
 
         const playerObj = outfieldPlayers[pIdx % outfieldPlayers.length] || players[pIdx % players.length];
-        tokens.push({
-          id: `home-${rIndex}-${c}`,
-          label: playerObj.name.split(' ')[0],
-          number: playerObj.number,
-          x: xPercent,
-          y: yPercent,
-          team: 'home',
-          positionType: playerObj.position || posType,
-        });
+        if (playerObj) {
+          tokens.push({
+            id: `home-${rIndex}-${c}`,
+            label: playerObj.name ? playerObj.name.split(' ')[0] : `Spelare`,
+            number: playerObj.number || c + 2,
+            x: xPercent,
+            y: yPercent,
+            team: 'home',
+            positionType: playerObj.position || posType,
+          });
+        }
         pIdx++;
       }
     });
 
-    if (activeOpponentTeam && activeOpponentTeam.players.length > 0) {
+    if (activeOpponentTeam && activeOpponentTeam.players && activeOpponentTeam.players.length > 0) {
       const oppGk = activeOpponentTeam.players.find((p) => p.position === 'Målvakt') || activeOpponentTeam.players[0];
       tokens.push({
         id: 'away-gk',
-        label: oppGk.name.split(' ')[0],
-        number: oppGk.number,
+        label: oppGk.name ? oppGk.name.split(' ')[0] : 'MV',
+        number: oppGk.number || 1,
         x: 50,
         y: 8,
         team: 'away',
@@ -273,7 +273,7 @@ export default function Home() {
       ];
 
       let oIdx = 0;
-      oppRows.forEach((rowConfig, rIndex) => {
+      oppRows.forEach((rowConfig) => {
         if (rowConfig.count <= 0) return;
         const colStep = 80 / (rowConfig.count + 1);
         for (let c = 0; c < rowConfig.count; c++) {
@@ -281,8 +281,8 @@ export default function Home() {
           const oppPlayer = oppOutfield[oIdx] || { name: `Motståndare`, number: oIdx + 2, position: rowConfig.pos };
           tokens.push({
             id: `away-${rIndex}-${c}`,
-            label: oppPlayer.name.split(' ')[0],
-            number: oppPlayer.number,
+            label: oppPlayer.name ? oppPlayer.name.split(' ')[0] : 'Motståndare',
+            number: oppPlayer.number || oIdx + 2,
             x: xPercent,
             y: rowConfig.y,
             team: 'away',
@@ -360,7 +360,7 @@ export default function Home() {
   };
 
   const filteredLeagues = leagues.filter(l => 
-    l.name.toLowerCase().includes(leagueSearchQuery.toLowerCase())
+    l?.name && l.name.toLowerCase().includes(leagueSearchQuery.toLowerCase())
   );
 
   return (
@@ -492,7 +492,6 @@ export default function Home() {
             <h2 className="text-2xl font-bold mb-2">🏆 Serier & Motståndare (Fogis-koppling)</h2>
             <p className="text-xs text-slate-400 mb-6">Sök bland tillgängliga serier, spara din serie och nå motståndarlagens registrerade spelartrupper direkt.</p>
 
-            {/* SÖKBAR SERIE / SPARA SEKTION */}
             <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl mb-8">
               <label className="block text-xs font-bold uppercase text-emerald-400 mb-2">Sök och välj serie / cup:</label>
               <div className="flex flex-col md:flex-row gap-4">
@@ -516,7 +515,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* VISA AKTIV SERIE OCH FOGIS-SPELARE */}
             {currentLeague ? (
               <div>
                 <div className="flex justify-between items-center mb-4">
@@ -527,7 +525,7 @@ export default function Home() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {currentLeague.teams.map((team) => (
+                  {currentLeague.teams?.map((team) => (
                     <div key={team.id} className="bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col justify-between shadow-lg">
                       <div>
                         <div className="flex justify-between items-start mb-2">
@@ -538,7 +536,7 @@ export default function Home() {
 
                         <h5 className="text-xs font-bold uppercase text-emerald-400 mb-2">Fogis-registrerade spelare</h5>
                         <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-                          {team.players.map((tp, idx) => (
+                          {team.players?.map((tp, idx) => (
                             <div key={idx} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs">
                               <div className="flex justify-between font-semibold">
                                 <span>#{tp.number} {tp.name}</span>
@@ -590,7 +588,7 @@ export default function Home() {
                     className="bg-slate-900 border border-slate-800 text-xs text-emerald-400 font-semibold px-3 py-1.5 rounded-lg focus:outline-none"
                   >
                     <option value="">Välj lag...</option>
-                    {currentLeague.teams.map((t) => (
+                    {currentLeague.teams?.map((t) => (
                       <option key={t.id} value={t.id}>{t.name}</option>
                     ))}
                   </select>
@@ -622,13 +620,6 @@ export default function Home() {
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 rounded-full border-2 border-emerald-600 pointer-events-none" />
               <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-20 border-b-2 border-x-2 border-emerald-600 pointer-events-none" />
               <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-48 h-20 border-t-2 border-x-2 border-emerald-600 pointer-events-none" />
-
-              <canvas
-                ref={canvasRef}
-                width={600}
-                height={900}
-                className="absolute inset-0 w-full h-full pointer-events-none z-10"
-              />
 
               {pitchTokens.map((token) => (
                 <div
