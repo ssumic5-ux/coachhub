@@ -35,10 +35,10 @@ export default function Home() {
   const [newSessionTitle, setNewSessionTitle] = useState('');
   const [newSessionFocus, setNewSessionFocus] = useState('');
 
-  // Matchinfo & Taktik
+  // Matchinfo & Dynamisk Taktik
   const [nextMatch, setNextMatch] = useState('Lördag 15:00 vs BK Häcken');
-  const [formation, setFormation] = useState<'4-3-3' | '4-4-2' | '3-5-2'>('4-3-3');
-  const [selectedStartingEleven, setSelectedStartingEleven] = useState<{ [pos: string]: string }>({});
+  const [formation, setFormation] = useState<string>('4-3-3');
+  const [customFormationInput, setCustomFormationInput] = useState<string>('');
 
   // AI-Assistent
   const [aiPrompt, setAiPrompt] = useState('');
@@ -73,7 +73,7 @@ export default function Home() {
     if (sessions.length > 0) localStorage.setItem('coachhub_sessions', JSON.stringify(sessions));
   }, [sessions]);
 
-  // Funktioner
+  // Funktioner för spelare och träning
   const handleAddPlayer = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPlayerName || !newPlayerNum) return;
@@ -109,12 +109,23 @@ export default function Home() {
     setNewSessionFocus('');
   };
 
+  const handleCustomFormationSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (customFormationInput.trim()) {
+      setFormation(customFormationInput.trim());
+      setCustomFormationInput('');
+    }
+  };
+
   const handleAiGenerate = () => {
     if (!aiPrompt) return;
     setAiResponse(
       `🤖 AI-RÅD FÖR: "${aiPrompt}"\n\n1. Rekommenderad Övning: 4v2 Smålagsspel med hög press i 15 min.\n2. Taktiskt skifte: Kliv högre med ytterbackarna när motståndarna spelar från målvakt.\n3. Fokus på nästa pass: Öva på sista passningen i sista tredjedelen.`
     );
   };
+
+  // Beräkna rader för dynamisk taktikutskrift på planen
+  const formationRows = formation.split('-').map((num) => parseInt(num, 10)).filter((num) => !isNaN(num));
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 font-sans">
@@ -290,43 +301,85 @@ export default function Home() {
         {/* TAKTIKTAVLA */}
         {activeTab === 'taktik' && (
           <div>
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold">Taktiktavla & Startelva</h2>
-              <div className="flex gap-2">
-                {(['4-3-3', '4-4-2', '3-5-2'] as const).map((f) => (
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+              <div>
+                <h2 className="text-2xl font-bold">Taktiktavla & Formation</h2>
+                <p className="text-xs text-slate-400">Aktiv formation: <span className="text-emerald-400 font-bold">{formation}</span></p>
+              </div>
+
+              {/* Snabbval och Custom Formation */}
+              <div className="flex flex-wrap items-center gap-2">
+                {['4-3-3', '4-4-2', '3-5-2', '4-2-3-1', '5-3-2', '3-4-3'].map((f) => (
                   <button
                     key={f}
                     onClick={() => setFormation(f)}
-                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
-                      formation === f ? 'bg-emerald-500 text-slate-950' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                      formation === f ? 'bg-emerald-500 text-slate-950' : 'bg-slate-900 text-slate-400 hover:bg-slate-800 border border-slate-800'
                     }`}
                   >
                     {f}
                   </button>
                 ))}
+
+                <form onSubmit={handleCustomFormationSubmit} className="flex gap-1 ml-2">
+                  <input
+                    type="text"
+                    placeholder="Valfri (t.ex. 4-1-4-1)"
+                    value={customFormationInput}
+                    onChange={(e) => setCustomFormationInput(e.target.value)}
+                    className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 w-32 focus:outline-none focus:border-emerald-500"
+                  />
+                  <button
+                    type="submit"
+                    className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs transition"
+                  >
+                    Använd
+                  </button>
+                </form>
               </div>
             </div>
 
-            {/* Fotbollsplan */}
-            <div className="bg-emerald-950/40 border-2 border-emerald-500/30 p-8 rounded-2xl relative min-h-[500px] flex flex-col justify-between items-center">
+            {/* Dynamisk Fotbollsplan */}
+            <div className="bg-emerald-950/40 border-2 border-emerald-500/30 p-8 rounded-2xl relative min-h-[550px] flex flex-col justify-between items-center">
               <div className="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none">
                 <div className="w-48 h-48 border-4 border-white rounded-full"></div>
               </div>
 
-              <div className="w-full text-center text-xs text-emerald-400 font-bold uppercase tracking-widest mb-4">Anfall direction ➔</div>
+              <div className="w-full text-center text-xs text-emerald-400 font-bold uppercase tracking-widest mb-2">Anfall ➔</div>
 
-              {/* Spelarpositioner */}
-              <div className="w-full grid grid-cols-3 gap-6 text-center my-auto">
-                {players.slice(0, 11).map((player) => (
-                  <div key={player.id} className="bg-slate-900/90 border border-emerald-500/50 p-3 rounded-xl shadow-lg inline-block mx-auto min-w-[140px]">
-                    <span className="text-xs font-bold text-emerald-400">#{player.number}</span>
-                    <p className="text-sm font-bold text-white">{player.name}</p>
-                    <span className="text-[10px] text-slate-400 uppercase">{player.position}</span>
+              {/* Dynamisk Utskrivning av Rader baserat på valfri taktik */}
+              <div className="w-full flex flex-col-reverse justify-around items-center flex-1 py-4 gap-6">
+                {/* Målvakt alltid längst ner */}
+                <div className="flex justify-center w-full">
+                  <div className="bg-slate-900/90 border border-emerald-500/50 px-4 py-2 rounded-xl shadow-lg text-center">
+                    <span className="text-xs font-bold text-emerald-400">#1</span>
+                    <p className="text-xs font-bold text-white">{players[0]?.name || 'Målvakt'}</p>
                   </div>
-                ))}
+                </div>
+
+                {/* Dynamiska Rader (Försvar, Mittfält, Anfall osv.) */}
+                {formationRows.map((count, rowIndex) => {
+                  return (
+                    <div key={rowIndex} className="flex justify-center items-center gap-4 w-full">
+                      {Array.from({ length: count }).map((_, colIndex) => {
+                        const playerIndex = (rowIndex * 3) + colIndex + 1;
+                        const player = players[playerIndex % players.length];
+                        return (
+                          <div
+                            key={colIndex}
+                            className="bg-slate-900/90 border border-emerald-500/50 px-3 py-2 rounded-xl shadow-lg text-center min-w-[110px]"
+                          >
+                            <span className="text-[10px] font-bold text-emerald-400">#{player?.number || playerIndex + 1}</span>
+                            <p className="text-xs font-bold text-white truncate">{player?.name || `Spelare ${playerIndex + 1}`}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
               </div>
 
-              <div className="w-full text-center text-xs text-emerald-400 font-bold uppercase tracking-widest mt-4">Mål / Försvar</div>
+              <div className="w-full text-center text-xs text-emerald-400 font-bold uppercase tracking-widest mt-2">Mål / Försvar</div>
             </div>
           </div>
         )}
