@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 type Player = {
   id: string;
@@ -40,6 +40,13 @@ export default function Home() {
   const [formation, setFormation] = useState<string>('4-3-3');
   const [customFormationInput, setCustomFormationInput] = useState<string>('');
 
+  // Rittavla (Canvas)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [drawingTool, setDrawingTool] = useState<'free' | 'arrow' | 'circle' | 'rect' | 'fill'>('free');
+  const [drawColor, setDrawColor] = useState<string>('#ef4444'); // Röd standard
+  const [isDrawing, setIsDrawing] = useState<boolean>(false);
+  const [startPos, setStartPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
   // AI-Assistent
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiResponse, setAiResponse] = useState<string | null>(null);
@@ -72,6 +79,94 @@ export default function Home() {
   useEffect(() => {
     if (sessions.length > 0) localStorage.setItem('coachhub_sessions', JSON.stringify(sessions));
   }, [sessions]);
+
+  // Canvas Rithantering
+  const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!canvasRef.current) return { x: 0, y: 0 };
+    const rect = canvasRef.current.getBoundingClientRect();
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+  };
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const coords = getCanvasCoords(e);
+    setIsDrawing(true);
+    setStartPos(coords);
+
+    if (drawingTool === 'free') {
+      const ctx = canvasRef.current?.getContext('2d');
+      if (ctx) {
+        ctx.beginPath();
+        ctx.moveTo(coords.x, coords.y);
+      }
+    }
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing || !canvasRef.current) return;
+    const ctx = canvasRef.current.getContext('2d');
+    if (!ctx) return;
+
+    const coords = getCanvasCoords(e);
+
+    if (drawingTool === 'free') {
+      ctx.strokeStyle = drawColor;
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.lineTo(coords.x, coords.y);
+      ctx.stroke();
+    }
+  };
+
+  const stopDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing || !canvasRef.current) return;
+    const ctx = canvasRef.current.getContext('2d');
+    if (!ctx) return;
+
+    const coords = getCanvasCoords(e);
+    ctx.strokeStyle = drawColor;
+    ctx.fillStyle = drawColor + '40'; // Genomskinlig för ytområden
+    ctx.lineWidth = 3;
+
+    if (drawingTool === 'rect') {
+      ctx.strokeRect(startPos.x, startPos.y, coords.x - startPos.x, coords.y - startPos.y);
+    } else if (drawingTool === 'fill') {
+      ctx.fillRect(startPos.x, startPos.y, coords.x - startPos.x, coords.y - startPos.y);
+    } else if (drawingTool === 'circle') {
+      const radius = Math.sqrt(Math.pow(coords.x - startPos.x, 2) + Math.pow(coords.y - startPos.y, 2));
+      ctx.beginPath();
+      ctx.arc(startPos.x, startPos.y, radius, 0, 2 * Math.PI);
+      ctx.stroke();
+    } else if (drawingTool === 'arrow') {
+      // Rita Pil
+      ctx.beginPath();
+      ctx.moveTo(startPos.x, startPos.y);
+      ctx.lineTo(coords.x, coords.y);
+      ctx.stroke();
+
+      // Pilspets
+      const angle = Math.atan2(coords.y - startPos.y, coords.x - startPos.x);
+      ctx.beginPath();
+      ctx.moveTo(coords.x, coords.y);
+      ctx.lineTo(coords.x - 12 * Math.cos(angle - Math.PI / 6), coords.y - 12 * Math.sin(angle - Math.PI / 6));
+      ctx.lineTo(coords.x - 12 * Math.cos(angle + Math.PI / 6), coords.y - 12 * Math.sin(angle + Math.PI / 6));
+      ctx.closePath();
+      ctx.fillStyle = drawColor;
+      ctx.fill();
+    }
+
+    setIsDrawing(false);
+  };
+
+  const clearCanvas = () => {
+    if (!canvasRef.current) return;
+    const ctx = canvasRef.current.getContext('2d');
+    if (ctx) {
+      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    }
+  };
 
   // Funktioner för spelare och träning
   const handleAddPlayer = (e: React.FormEvent) => {
@@ -124,7 +219,6 @@ export default function Home() {
     );
   };
 
-  // Beräkna rader för dynamisk taktikutskrift på planen
   const formationRows = formation.split('-').map((num) => parseInt(num, 10)).filter((num) => !isNaN(num));
 
   return (
@@ -298,16 +392,16 @@ export default function Home() {
           </div>
         )}
 
-        {/* TAKTIKTAVLA */}
+        {/* TAKTIKTAVLA MED RITVERKTYG */}
         {activeTab === 'taktik' && (
           <div>
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
               <div>
-                <h2 className="text-2xl font-bold">Taktiktavla & Formation</h2>
+                <h2 className="text-2xl font-bold">Interaktiv Taktiktavla</h2>
                 <p className="text-xs text-slate-400">Aktiv formation: <span className="text-emerald-400 font-bold">{formation}</span></p>
               </div>
 
-              {/* Snabbval och Custom Formation */}
+              {/* Formationer */}
               <div className="flex flex-wrap items-center gap-2">
                 {['4-3-3', '4-4-2', '3-5-2', '4-2-3-1', '5-3-2', '3-4-3'].map((f) => (
                   <button
@@ -324,32 +418,108 @@ export default function Home() {
                 <form onSubmit={handleCustomFormationSubmit} className="flex gap-1 ml-2">
                   <input
                     type="text"
-                    placeholder="Valfri (t.ex. 4-1-4-1)"
+                    placeholder="Egen formation"
                     value={customFormationInput}
                     onChange={(e) => setCustomFormationInput(e.target.value)}
-                    className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 w-32 focus:outline-none focus:border-emerald-500"
+                    className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 w-28 focus:outline-none focus:border-emerald-500"
                   />
-                  <button
-                    type="submit"
-                    className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs transition"
-                  >
-                    Använd
+                  <button type="submit" className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs transition">
+                    OK
                   </button>
                 </form>
               </div>
             </div>
 
-            {/* Dynamisk Fotbollsplan */}
-            <div className="bg-emerald-950/40 border-2 border-emerald-500/30 p-8 rounded-2xl relative min-h-[550px] flex flex-col justify-between items-center">
-              <div className="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none">
-                <div className="w-48 h-48 border-4 border-white rounded-full"></div>
+            {/* VERKTYGSFÄLT FÖR RITNING */}
+            <div className="bg-slate-900 border border-slate-800 p-3 rounded-xl mb-4 flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-400 mr-2">Verktyg:</span>
+                <button
+                  onClick={() => setDrawingTool('free')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    drawingTool === 'free' ? 'bg-emerald-500 text-slate-950' : 'bg-slate-950 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  ✏️ Frihand
+                </button>
+                <button
+                  onClick={() => setDrawingTool('arrow')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    drawingTool === 'arrow' ? 'bg-emerald-500 text-slate-950' : 'bg-slate-950 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  ➔ Pil
+                </button>
+                <button
+                  onClick={() => setDrawingTool('circle')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    drawingTool === 'circle' ? 'bg-emerald-500 text-slate-950' : 'bg-slate-950 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  ⭕ Cirkel
+                </button>
+                <button
+                  onClick={() => setDrawingTool('rect')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    drawingTool === 'rect' ? 'bg-emerald-500 text-slate-950' : 'bg-slate-950 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  🔲 Fyrkant
+                </button>
+                <button
+                  onClick={() => setDrawingTool('fill')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    drawingTool === 'fill' ? 'bg-emerald-500 text-slate-950' : 'bg-slate-950 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  🎨 Markera Yta
+                </button>
               </div>
 
-              <div className="w-full text-center text-xs text-emerald-400 font-bold uppercase tracking-widest mb-2">Anfall ➔</div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold text-slate-400">Färg:</span>
+                {[
+                  { color: '#ef4444', label: 'Röd' },
+                  { color: '#eab308', label: 'Gul' },
+                  { color: '#3b82f6', label: 'Blå' },
+                  { color: '#ffffff', label: 'Vit' },
+                ].map((c) => (
+                  <button
+                    key={c.color}
+                    onClick={() => setDrawColor(c.color)}
+                    style={{ backgroundColor: c.color }}
+                    className={`w-6 h-6 rounded-full border-2 transition ${
+                      drawColor === c.color ? 'scale-125 border-emerald-400' : 'border-transparent opacity-80 hover:opacity-100'
+                    }`}
+                  />
+                ))}
 
-              {/* Dynamisk Utskrivning av Rader baserat på valfri taktik */}
-              <div className="w-full flex flex-col-reverse justify-around items-center flex-1 py-4 gap-6">
-                {/* Målvakt alltid längst ner */}
+                <button
+                  onClick={clearCanvas}
+                  className="bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 font-semibold px-3 py-1.5 rounded-lg text-xs ml-4 transition"
+                >
+                  🗑️ Rensa Ritning
+                </button>
+              </div>
+            </div>
+
+            {/* FOTBOLLSPLAN MED RIT-CANVAS */}
+            <div className="bg-emerald-950/40 border-2 border-emerald-500/30 rounded-2xl relative min-h-[550px] flex flex-col justify-between items-center overflow-hidden">
+              {/* Canvas Overlay för Ritning */}
+              <canvas
+                ref={canvasRef}
+                width={800}
+                height={550}
+                onMouseDown={startDrawing}
+                onMouseMove={draw}
+                onMouseUp={stopDrawing}
+                className="absolute inset-0 w-full h-full z-20 cursor-crosshair"
+              />
+
+              <div className="w-full text-center text-xs text-emerald-400 font-bold uppercase tracking-widest pt-4">Anfall ➔</div>
+
+              {/* Spelare på planen */}
+              <div className="w-full flex flex-col-reverse justify-around items-center flex-1 py-4 gap-6 z-10 pointer-events-none">
                 <div className="flex justify-center w-full">
                   <div className="bg-slate-900/90 border border-emerald-500/50 px-4 py-2 rounded-xl shadow-lg text-center">
                     <span className="text-xs font-bold text-emerald-400">#1</span>
@@ -357,29 +527,26 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Dynamiska Rader (Försvar, Mittfält, Anfall osv.) */}
-                {formationRows.map((count, rowIndex) => {
-                  return (
-                    <div key={rowIndex} className="flex justify-center items-center gap-4 w-full">
-                      {Array.from({ length: count }).map((_, colIndex) => {
-                        const playerIndex = (rowIndex * 3) + colIndex + 1;
-                        const player = players[playerIndex % players.length];
-                        return (
-                          <div
-                            key={colIndex}
-                            className="bg-slate-900/90 border border-emerald-500/50 px-3 py-2 rounded-xl shadow-lg text-center min-w-[110px]"
-                          >
-                            <span className="text-[10px] font-bold text-emerald-400">#{player?.number || playerIndex + 1}</span>
-                            <p className="text-xs font-bold text-white truncate">{player?.name || `Spelare ${playerIndex + 1}`}</p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
+                {formationRows.map((count, rowIndex) => (
+                  <div key={rowIndex} className="flex justify-center items-center gap-4 w-full">
+                    {Array.from({ length: count }).map((_, colIndex) => {
+                      const playerIndex = rowIndex * 3 + colIndex + 1;
+                      const player = players[playerIndex % players.length];
+                      return (
+                        <div
+                          key={colIndex}
+                          className="bg-slate-900/90 border border-emerald-500/50 px-3 py-2 rounded-xl shadow-lg text-center min-w-[110px]"
+                        >
+                          <span className="text-[10px] font-bold text-emerald-400">#{player?.number || playerIndex + 1}</span>
+                          <p className="text-xs font-bold text-white truncate">{player?.name || `Spelare ${playerIndex + 1}`}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
 
-              <div className="w-full text-center text-xs text-emerald-400 font-bold uppercase tracking-widest mt-2">Mål / Försvar</div>
+              <div className="w-full text-center text-xs text-emerald-400 font-bold uppercase tracking-widest pb-4">Mål / Försvar</div>
             </div>
           </div>
         )}
