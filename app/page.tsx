@@ -10,6 +10,15 @@ type Player = {
   status: 'Aktiv' | 'Skadad' | 'Frånvarande';
 };
 
+type PitchToken = {
+  id: string;
+  label: string;
+  number: number | string;
+  x: number; // Procent av planens bredd (0 - 100)
+  y: number; // Procent av planens höjd (0 - 100)
+  team: 'home' | 'away';
+};
+
 type TrainingSession = {
   id: string;
   date: string;
@@ -21,7 +30,7 @@ type TrainingSession = {
 export default function Home() {
   const [activeTab, setActiveTab] = useState<'oversikt' | 'trupp' | 'taktik' | 'traning' | 'ai'>('oversikt');
 
-  // Datatillstånd (State)
+  // Datatillstånd
   const [players, setPlayers] = useState<Player[]>([]);
   const [sessions, setSessions] = useState<TrainingSession[]>([]);
 
@@ -44,12 +53,17 @@ export default function Home() {
   const [homeKitColor, setHomeKitColor] = useState<string>('#10b981'); // Grön
   const [awayKitColor, setAwayKitColor] = useState<string>('#ef4444'); // Röd
 
+  // Spelare på planen (Drag & Drop)
+  const [pitchTokens, setPitchTokens] = useState<PitchToken[]>([]);
+  const [draggingTokenId, setDraggingTokenId] = useState<string | null>(null);
+  const pitchRef = useRef<HTMLDivElement | null>(null);
+
   // Rittavla (Canvas)
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [drawingTool, setDrawingTool] = useState<'free' | 'arrow' | 'circle' | 'rect' | 'fill'>('free');
-  const [drawColor, setDrawColor] = useState<string>('#ffffff'); // Vit standard för ritning
+  const [drawingTool, setDrawingTool] = useState<'free' | 'arrow' | 'circle' | 'rect' | 'fill' | 'none'>('none');
+  const [drawColor, setDrawColor] = useState<string>('#ffffff');
   const [isDrawing, setIsDrawing] = useState<boolean>(false);
   const [startPos, setStartPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // AI-Assistent
   const [aiPrompt, setAiPrompt] = useState('');
@@ -75,7 +89,6 @@ export default function Home() {
     }
   }, []);
 
-  // Spara till localStorage
   useEffect(() => {
     if (players.length > 0) localStorage.setItem('coachhub_players', JSON.stringify(players));
   }, [players]);
@@ -83,6 +96,106 @@ export default function Home() {
   useEffect(() => {
     if (sessions.length > 0) localStorage.setItem('coachhub_sessions', JSON.stringify(sessions));
   }, [sessions]);
+
+  // Beräkna initiala positioner utifrån vald formation (11 Hemma & 11 Borta)
+  const setupPitchTokens = () => {
+    const rows = formation.split('-').map((n) => parseInt(n, 10)).filter((n) => !isNaN(n));
+    const tokens: PitchToken[] = [];
+
+    // --- HEMMALAGET (11 SPELARE) ---
+    // Målvakt (Hemma)
+    tokens.push({
+      id: 'home-gk',
+      label: players[3]?.name.split(' ')[0] || 'Målvakt',
+      number: players[3]?.number || 1,
+      x: 50,
+      y: 92,
+      team: 'home',
+    });
+
+    // Hemmalagets utespelare (10 st)
+    let pIdx = 0;
+    const totalRows = rows.length;
+    rows.forEach((countInRow, rIndex) => {
+      const yPercent = 80 - (rIndex * 45) / Math.max(1, totalRows - 1);
+      const colStep = 80 / (countInRow + 1);
+      for (let c = 0; c < countInRow; c++) {
+        const xPercent = colStep * (c + 1) + 10;
+        const playerObj = players[pIdx % players.length];
+        tokens.push({
+          id: `home-${rIndex}-${c}`,
+          label: playerObj?.name ? playerObj.name.split(' ')[0] : `P${pIdx + 1}`,
+          number: playerObj?.number || pIdx + 2,
+          x: xPercent,
+          y: yPercent,
+          team: 'home',
+        });
+        pIdx++;
+      }
+    });
+
+    // --- MOTSTÅNDARLAGET (11 SPELARE I 4-4-2) ---
+    // Målvakt (Borta)
+    tokens.push({
+      id: 'away-gk',
+      label: 'Målvakt',
+      number: 1,
+      x: 50,
+      y: 8,
+      team: 'away',
+    });
+
+    // 4-4-2 Utespelare
+    const awayRows = [
+      { count: 4, y: 22, labels: ['VB', 'MB', 'MB', 'HB'] },       // Backlinje
+      { count: 4, y: 38, labels: ['VM', 'CM', 'CM', 'HM'] },       // Mittfält
+      { count: 2, y: 48, labels: ['FW', 'FW'] },                   // Anfallare
+    ];
+
+    let awayNumber = 2;
+    awayRows.forEach((rowConfig, rIndex) => {
+      const colStep = 80 / (rowConfig.count + 1);
+      for (let c = 0; c < rowConfig.count; c++) {
+        const xPercent = colStep * (c + 1) + 10;
+        tokens.push({
+          id: `away-${rIndex}-${c}`,
+          label: rowConfig.labels[c] || `M${awayNumber}`,
+          number: awayNumber,
+          x: xPercent,
+          y: rowConfig.y,
+          team: 'away',
+        });
+        awayNumber++;
+      }
+    });
+
+    setPitchTokens(tokens);
+  };
+
+  useEffect(() => {
+    setupPitchTokens();
+  }, [formation, players]);
+
+  // Drag & Drop funktioner
+  const handleMouseDownToken = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDraggingTokenId(id);
+  };
+
+  const handleMouseMovePitch = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!draggingTokenId || !pitchRef.current) return;
+    const rect = pitchRef.current.getBoundingClientRect();
+    const x = Math.max(2, Math.min(98, ((e.clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(2, Math.min(98, ((e.clientY - rect.top) / rect.height) * 100));
+
+    setPitchTokens((prev) =>
+      prev.map((tok) => (tok.id === draggingTokenId ? { ...tok, x, y } : tok))
+    );
+  };
+
+  const handleMouseUpPitch = () => {
+    setDraggingTokenId(null);
+  };
 
   // Canvas Rithantering
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -95,6 +208,7 @@ export default function Home() {
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (drawingTool === 'none') return;
     const coords = getCanvasCoords(e);
     setIsDrawing(true);
     setStartPos(coords);
@@ -109,7 +223,7 @@ export default function Home() {
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || !canvasRef.current) return;
+    if (!isDrawing || !canvasRef.current || drawingTool === 'none') return;
     const ctx = canvasRef.current.getContext('2d');
     if (!ctx) return;
 
@@ -125,7 +239,7 @@ export default function Home() {
   };
 
   const stopDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || !canvasRef.current) return;
+    if (!isDrawing || !canvasRef.current || drawingTool === 'none') return;
     const ctx = canvasRef.current.getContext('2d');
     if (!ctx) return;
 
@@ -219,8 +333,6 @@ export default function Home() {
       `🤖 AI-RÅD FÖR: "${aiPrompt}"\n\n1. Rekommenderad Övning: 4v2 Smålagsspel med hög press i 15 min.\n2. Taktiskt skifte: Kliv högre med ytterbackarna när motståndarna spelar från målvakt.\n3. Fokus på nästa pass: Öva på sista passningen i sista tredjedelen.`
     );
   };
-
-  const formationRows = formation.split('-').map((num) => parseInt(num, 10)).filter((num) => !isNaN(num));
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 font-sans">
@@ -398,8 +510,8 @@ export default function Home() {
           <div>
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
               <div>
-                <h2 className="text-2xl font-bold">Interaktiv Taktiktavla</h2>
-                <p className="text-xs text-slate-400">Aktiv formation: <span className="text-emerald-400 font-bold">{formation}</span></p>
+                <h2 className="text-2xl font-bold">Interaktiv Taktiktavla (11v11)</h2>
+                <p className="text-xs text-slate-400">Dra och släpp spelarna (både ditt lag & motståndarna) fritt över planen!</p>
               </div>
 
               {/* Formationer */}
@@ -445,7 +557,7 @@ export default function Home() {
                   />
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-slate-400">Motståndare:</span>
+                  <span className="text-xs font-semibold text-slate-400">Motståndare (4-4-2):</span>
                   <input
                     type="color"
                     value={awayKitColor}
@@ -458,12 +570,20 @@ export default function Home() {
               {/* Verktyg */}
               <div className="flex items-center gap-2">
                 <button
+                  onClick={() => setDrawingTool('none')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    drawingTool === 'none' ? 'bg-emerald-500 text-slate-950' : 'bg-slate-950 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  🖐️ Dra Spelare
+                </button>
+                <button
                   onClick={() => setDrawingTool('free')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
                     drawingTool === 'free' ? 'bg-emerald-500 text-slate-950' : 'bg-slate-950 text-slate-300 hover:bg-slate-800'
                   }`}
                 >
-                  ✏️ Frihand
+                  ✏️ Rita
                 </button>
                 <button
                   onClick={() => setDrawingTool('arrow')}
@@ -489,14 +609,6 @@ export default function Home() {
                 >
                   🔲 Fyrkant
                 </button>
-                <button
-                  onClick={() => setDrawingTool('fill')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    drawingTool === 'fill' ? 'bg-emerald-500 text-slate-950' : 'bg-slate-950 text-slate-300 hover:bg-slate-800'
-                  }`}
-                >
-                  🎨 Markera Yta
-                </button>
               </div>
 
               {/* Ritfärg & Rensa */}
@@ -521,24 +633,24 @@ export default function Home() {
                   onClick={clearCanvas}
                   className="bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 font-semibold px-3 py-1.5 rounded-lg text-xs transition ml-2"
                 >
-                  🗑️ Rensa
+                  🗑️ Rensa linjer
+                </button>
+                <button
+                  onClick={setupPitchTokens}
+                  className="bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700 font-semibold px-3 py-1.5 rounded-lg text-xs transition"
+                >
+                  🔄 Återställ uppställning
                 </button>
               </div>
             </div>
 
-            {/* REALISTISK FOTBOLLSPLAN */}
-            <div className="bg-emerald-800 border-4 border-slate-800 rounded-2xl relative min-h-[600px] flex flex-col justify-between items-center overflow-hidden shadow-2xl">
-              {/* Rit-Canvas */}
-              <canvas
-                ref={canvasRef}
-                width={800}
-                height={600}
-                onMouseDown={startDrawing}
-                onMouseMove={draw}
-                onMouseUp={stopDrawing}
-                className="absolute inset-0 w-full h-full z-20 cursor-crosshair"
-              />
-
+            {/* INTERAKTIV FOTBOLLSPLAN */}
+            <div
+              ref={pitchRef}
+              onMouseMove={handleMouseMovePitch}
+              onMouseUp={handleMouseUpPitch}
+              className="bg-emerald-800 border-4 border-slate-800 rounded-2xl relative h-[650px] overflow-hidden shadow-2xl select-none"
+            >
               {/* REALISTISKA LINJER */}
               <div className="absolute inset-0 border-2 border-white/70 m-4 rounded-sm pointer-events-none">
                 {/* Mittlinje */}
@@ -547,62 +659,44 @@ export default function Home() {
                 <div className="absolute top-1/2 left-1/2 w-32 h-32 border-2 border-white/70 rounded-full transform -translate-x-1/2 -translate-y-1/2"></div>
                 <div className="absolute top-1/2 left-1/2 w-2 h-2 bg-white rounded-full transform -translate-x-1/2 -translate-y-1/2"></div>
 
-                {/* Övre Straffområde (Borta) */}
+                {/* Övre Straffområde */}
                 <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-72 h-28 border-b-2 border-l-2 border-r-2 border-white/70"></div>
                 <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-36 h-12 border-b-2 border-l-2 border-r-2 border-white/70"></div>
 
-                {/* Nedre Straffområde (Hemma) */}
+                {/* Nedre Straffområde */}
                 <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-72 h-28 border-t-2 border-l-2 border-r-2 border-white/70"></div>
                 <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-36 h-12 border-t-2 border-l-2 border-r-2 border-white/70"></div>
               </div>
 
-              {/* MOTSTÅNDARLAGET (ÖVRE HALVA - ANFALLSRIKTNING) */}
-              <div className="w-full flex justify-around items-center pt-8 z-10 pointer-events-none">
-                {[1, 2, 3, 4].map((i) => (
-                  <div
-                    key={`away-${i}`}
-                    style={{ backgroundColor: awayKitColor }}
-                    className="w-9 h-9 rounded-full border-2 border-white flex items-center justify-center font-bold text-xs text-white shadow-lg"
-                  >
-                    M{i}
-                  </div>
-                ))}
-              </div>
+              {/* RIT-CANVAS */}
+              <canvas
+                ref={canvasRef}
+                width={800}
+                height={650}
+                onMouseDown={startDrawing}
+                onMouseMove={draw}
+                onMouseUp={stopDrawing}
+                className={`absolute inset-0 w-full h-full ${
+                  drawingTool !== 'none' ? 'z-30 cursor-crosshair' : 'z-10 pointer-events-none'
+                }`}
+              />
 
-              {/* VÅRT LAG (NEDRE HALVA - DYNAMISK FORMATION) */}
-              <div className="w-full flex flex-col-reverse justify-around items-center flex-1 pb-6 z-10 pointer-events-none gap-4">
-                {/* Målvakt */}
-                <div className="flex justify-center w-full">
-                  <div
-                    style={{ backgroundColor: homeKitColor }}
-                    className="w-10 h-10 rounded-full border-2 border-white flex flex-col items-center justify-center shadow-lg"
-                  >
-                    <span className="text-[10px] font-bold text-white">#1</span>
-                  </div>
+              {/* INTERAKTIVA SPELARE (DRAG & DROP) */}
+              {pitchTokens.map((token) => (
+                <div
+                  key={token.id}
+                  onMouseDown={(e) => handleMouseDownToken(token.id, e)}
+                  style={{
+                    left: `${token.x}%`,
+                    top: `${token.y}%`,
+                    backgroundColor: token.team === 'home' ? homeKitColor : awayKitColor,
+                  }}
+                  className={`absolute z-20 transform -translate-x-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing px-2.5 py-1 rounded-full border-2 border-white shadow-xl flex items-center gap-1.5 transition-transform hover:scale-110 select-none`}
+                >
+                  <span className="text-xs font-bold text-white">#{token.number}</span>
+                  <span className="text-xs font-semibold text-white truncate max-w-[70px]">{token.label}</span>
                 </div>
-
-                {/* Spelare uppställda efter formation */}
-                {formationRows.map((count, rowIndex) => (
-                  <div key={rowIndex} className="flex justify-center items-center gap-6 w-full">
-                    {Array.from({ length: count }).map((_, colIndex) => {
-                      const playerIndex = rowIndex * 3 + colIndex + 1;
-                      const player = players[playerIndex % players.length];
-                      return (
-                        <div
-                          key={colIndex}
-                          style={{ backgroundColor: homeKitColor }}
-                          className="px-3 py-1.5 rounded-full border-2 border-white shadow-lg text-center flex items-center gap-1.5"
-                        >
-                          <span className="text-xs font-bold text-white">#{player?.number || playerIndex + 1}</span>
-                          <span className="text-xs font-semibold text-white truncate max-w-[80px]">
-                            {player?.name ? player.name.split(' ')[0] : `P${playerIndex + 1}`}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
+              ))}
             </div>
           </div>
         )}
