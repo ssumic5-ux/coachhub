@@ -14,10 +14,9 @@ type PitchToken = {
   id: string;
   label: string;
   number: number | string;
-  x: number; 
-  y: number; 
+  x: number; //procent 0-100
+  y: number; //procent 0-100
   team: 'home' | 'away';
-  positionType?: string;
 };
 
 type TrainingSession = {
@@ -49,6 +48,17 @@ type League = {
   teams: OpponentTeam[];
 };
 
+type DrawTool = 'select' | 'arrow' | 'circle' | 'space';
+
+type DrawingElement = {
+  type: 'arrow' | 'circle' | 'space';
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  color: string;
+};
+
 export default function Home() {
   const [activeTab, setActiveTab] = useState<'oversikt' | 'trupp' | 'serier' | 'taktik' | 'traning' | 'ai'>('oversikt');
 
@@ -60,9 +70,19 @@ export default function Home() {
   const [selectedLeagueId, setSelectedLeagueId] = useState<string>('');
   const [selectedOpponentTeamId, setSelectedOpponentTeamId] = useState<string>('');
 
-  const [formation, setFormation] = useState<string>('4-3-3');
-
+  // Taktik & Plan-state
+  const [homeFormation, setHomeFormation] = useState<string>('4-3-3');
+  const [awayFormation, setAwayFormation] = useState<string>('4-4-2');
+  const [homeColor, setHomeColor] = useState<string>('#10b981'); // Emerald
+  const [awayColor, setAwayColor] = useState<string>('#ef4444'); // Red
   const [pitchTokens, setPitchTokens] = useState<PitchToken[]>([]);
+  
+  // Ritverktyg
+  const [activeTool, setActiveTool] = useState<DrawTool>('select');
+  const [drawings, setDrawings] = useState<DrawingElement[]>([]);
+  const [currentDraw, setCurrentDraw] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null);
+
+  const [draggingTokenId, setDraggingTokenId] = useState<string | null>(null);
   const pitchRef = useRef<HTMLDivElement | null>(null);
 
   const [aiPrompt, setAiPrompt] = useState('');
@@ -103,34 +123,34 @@ export default function Home() {
 
   const defaultPlayers: Player[] = [
     { id: '1', name: 'Robin Olsen', position: 'Målvakt', number: 1, status: 'Aktiv' },
-    { id: '2', name: 'Viktor Johansson', position: 'Målvakt', number: 12, status: 'Aktiv' },
-    { id: '3', name: 'Victor Lindelöf', position: 'Back', number: 3, status: 'Aktiv' },
-    { id: '4', name: 'Isak Hien', position: 'Back', number: 4, status: 'Aktiv' },
-    { id: '5', name: 'Dejan Kulusevski', position: 'Mittfältare', number: 10, status: 'Aktiv' },
-    { id: '6', name: 'Alexander Isak', position: 'Forward', number: 9, status: 'Aktiv' }
+    { id: '2', name: 'Victor Lindelöf', position: 'Back', number: 3, status: 'Aktiv' },
+    { id: '3', name: 'Isak Hien', position: 'Back', number: 4, status: 'Aktiv' },
+    { id: '4', name: 'Ludwig Augustinsson', position: 'Back', number: 6, status: 'Aktiv' },
+    { id: '5', name: 'Emil Krafth', position: 'Back', number: 2, status: 'Aktiv' },
+    { id: '6', name: 'Dejan Kulusevski', position: 'Mittfältare', number: 10, status: 'Aktiv' },
+    { id: '7', name: 'Mattias Svanberg', position: 'Mittfältare', number: 20, status: 'Aktiv' },
+    { id: '8', name: 'Jens Cajuste', position: 'Mittfältare', number: 18, status: 'Aktiv' },
+    { id: '9', name: 'Alexander Isak', position: 'Forward', number: 9, status: 'Aktiv' },
+    { id: '10', name: 'Viktor Gyökeres', position: 'Forward', number: 17, status: 'Aktiv' },
+    { id: '11', name: 'Anthony Elanga', position: 'Forward', number: 11, status: 'Aktiv' }
   ];
 
   useEffect(() => {
     try {
       const savedLeagues = localStorage.getItem('coachhub_leagues');
-      if (savedLeagues) {
-        setLeagues(JSON.parse(savedLeagues));
-      } else {
+      if (savedLeagues) setLeagues(JSON.parse(savedLeagues));
+      else {
         setLeagues(defaultLeagues);
         localStorage.setItem('coachhub_leagues', JSON.stringify(defaultLeagues));
       }
 
       const savedSelectedLeague = localStorage.getItem('coachhub_selected_league');
-      if (savedSelectedLeague) {
-        setSelectedLeagueId(savedSelectedLeague);
-      } else if (defaultLeagues.length > 0) {
-        setSelectedLeagueId(defaultLeagues[0].id);
-      }
+      if (savedSelectedLeague) setSelectedLeagueId(savedSelectedLeague);
+      else if (defaultLeagues.length > 0) setSelectedLeagueId(defaultLeagues[0].id);
 
       const savedPlayers = localStorage.getItem('coachhub_players');
-      if (savedPlayers) {
-        setPlayers(JSON.parse(savedPlayers));
-      } else {
+      if (savedPlayers) setPlayers(JSON.parse(savedPlayers));
+      else {
         setPlayers(defaultPlayers);
         localStorage.setItem('coachhub_players', JSON.stringify(defaultPlayers));
       }
@@ -147,41 +167,165 @@ export default function Home() {
   };
 
   const currentLeague = leagues?.find(l => l?.id === selectedLeagueId);
-  const activeOpponentTeam = currentLeague?.teams?.find(t => t?.id === selectedOpponentTeamId);
 
-  const setupPitchTokens = () => {
+  // Generera koordinater för 11 spelare utifrån formation
+  const getFormationCoords = (form: string, isHome: boolean) => {
     const tokens: PitchToken[] = [];
+    
+    // Y-intervall: Hemmalag spelar på nedre halvan (52 till 90), Bortalag på övre (10 till 48)
+    const gkY = isHome ? 91 : 9;
+    
+    // Målvakt
     tokens.push({
-      id: 'home-gk',
+      id: `${isHome ? 'home' : 'away'}-gk`,
       label: 'MV',
-      number: 1,
+      number: isHome ? 1 : 30,
       x: 50,
-      y: 92,
-      team: 'home',
-      positionType: 'Målvakt',
+      y: gkY,
+      team: isHome ? 'home' : 'away'
     });
-    setPitchTokens(tokens);
+
+    let defY = isHome ? 74 : 26;
+    let midY = isHome ? 53 : 47;
+    let attY = isHome ? 30 : 70;
+
+    let defX = [18, 38, 62, 82];
+    let midX = [30, 50, 70];
+    let attX = [25, 50, 75];
+
+    if (form === '4-3-3') {
+      defX = [18, 38, 62, 82];
+      midX = [30, 50, 70];
+      attX = [22, 50, 78];
+    } else if (form === '4-4-2') {
+      defX = [18, 38, 62, 82];
+      midX = [15, 38, 62, 85];
+      attX = [38, 62];
+    } else if (form === '3-5-2') {
+      defX = [25, 50, 75];
+      midX = [15, 32, 50, 68, 85];
+      attX = [38, 62];
+    } else if (form === '5-3-2') {
+      defX = [15, 30, 50, 70, 85];
+      midX = [30, 50, 70];
+      attX = [38, 62];
+    } else if (form === '4-2-3-1') {
+      defX = [18, 38, 62, 82];
+      midX = [40, 60, 22, 50, 78]; 
+      attX = [50];
+    }
+
+    // Backar
+    defX.forEach((x, idx) => {
+      tokens.push({
+        id: `${isHome ? 'home' : 'away'}-def-${idx}`,
+        label: `B${idx + 1}`,
+        number: idx + 2,
+        x,
+        y: defY,
+        team: isHome ? 'home' : 'away'
+      });
+    });
+
+    // Mittfältare
+    midX.forEach((x, idx) => {
+      tokens.push({
+        id: `${isHome ? 'home' : 'away'}-mid-${idx}`,
+        label: `MF${idx + 1}`,
+        number: idx + 6,
+        x,
+        y: midY,
+        team: isHome ? 'home' : 'away'
+      });
+    });
+
+    // Anfallare
+    if (form === '4-2-3-1') {
+      tokens.push({ id: `${isHome ? 'home' : 'away'}-st`, label: 'FW', number: 9, x: 50, y: isHome ? 18 : 82, team: isHome ? 'home' : 'away' });
+    } else {
+      attX.forEach((x, idx) => {
+        tokens.push({
+          id: `${isHome ? 'home' : 'away'}-att-${idx}`,
+          label: `FW${idx + 1}`,
+          number: idx + 9,
+          x,
+          y: attY,
+          team: isHome ? 'home' : 'away'
+        });
+      });
+    }
+
+    return tokens;
   };
 
   useEffect(() => {
-    setupPitchTokens();
-  }, [formation, players, selectedOpponentTeamId]);
+    const homeTokens = getFormationCoords(homeFormation, true);
+    const awayTokens = getFormationCoords(awayFormation, false);
+    setPitchTokens([...homeTokens, ...awayTokens]);
+  }, [homeFormation, awayFormation]);
+
+  // Drag-and-drop handhavande
+  const handlePointerDownToken = (id: string, e: React.PointerEvent) => {
+    if (activeTool === 'select') {
+      e.stopPropagation();
+      setDraggingTokenId(id);
+    }
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!pitchRef.current) return;
+    const rect = pitchRef.current.getBoundingClientRect();
+    const x = Math.max(3, Math.min(97, ((e.clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(3, Math.min(97, ((e.clientY - rect.top) / rect.height) * 100));
+
+    if (draggingTokenId && activeTool === 'select') {
+      setPitchTokens(prev => prev.map(t => t.id === draggingTokenId ? { ...t, x, y } : t));
+    } else if (currentDraw) {
+      setCurrentDraw(prev => prev ? { ...prev, endX: x, endY: y } : null);
+    }
+  };
+
+  const handlePointerUp = () => {
+    if (currentDraw && activeTool !== 'select') {
+      setDrawings(prev => [...prev, {
+        type: activeTool as any,
+        startX: currentDraw.startX,
+        startY: currentDraw.startY,
+        endX: currentDraw.endX,
+        endY: currentDraw.endY,
+        color: '#facc15' // Gul penna
+      }]);
+      setCurrentDraw(null);
+    }
+    setDraggingTokenId(null);
+  };
+
+  const handlePitchDown = (e: React.PointerEvent) => {
+    if (activeTool !== 'select') {
+      if (!pitchRef.current) return;
+      const rect = pitchRef.current.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      setCurrentDraw({ startX: x, startY: y, endX: x, endY: y });
+    }
+  };
 
   const filteredLeagues = leagues?.filter(l => 
     l?.name && l.name.toLowerCase().includes(leagueSearchQuery.toLowerCase())
   ) || [];
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100 font-sans">
-      <aside className="w-64 bg-slate-900 border-r border-slate-800 p-6 flex flex-col justify-between">
+    <div className="flex h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden">
+      {/* Sidebar */}
+      <aside className="w-64 bg-slate-900 border-r border-slate-800 p-6 flex flex-col justify-between shrink-0">
         <div>
           <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-lg bg-emerald-500 flex items-center justify-center font-bold text-slate-950 text-xl">
+            <div className="w-10 h-10 rounded-lg bg-emerald-500 flex items-center justify-center font-bold text-slate-950 text-xl shadow-lg">
               C
             </div>
             <div>
               <h1 className="font-bold text-lg leading-none">CoachHub</h1>
-              <span className="text-xs text-slate-400">MVP 1.0 Pro</span>
+              <span className="text-xs text-slate-400">Pro Taktik & Lagledning</span>
             </div>
           </div>
 
@@ -216,7 +360,7 @@ export default function Home() {
                 activeTab === 'taktik' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'text-slate-400 hover:bg-slate-800'
               }`}
             >
-              📋 Taktiktavla & Motstånd
+              📋 Taktiktavla & Plan (22 spelare)
             </button>
             <button
               onClick={() => setActiveTab('traning')}
@@ -238,26 +382,27 @@ export default function Home() {
         </div>
       </aside>
 
-      <main className="flex-1 p-8 overflow-y-auto">
+      {/* Main Content */}
+      <main className="flex-1 p-6 overflow-y-auto">
         {activeTab === 'oversikt' && (
           <div>
             <h2 className="text-2xl font-bold mb-6">Välkommen tillbaka, Tränarn!</h2>
             <div className="grid grid-cols-4 gap-6 mb-8">
               <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl">
                 <p className="text-slate-400 text-sm mb-1">Aktiva Spelare</p>
-                <p className="text-3xl font-bold text-emerald-400">{players?.filter((p) => p?.status === 'Aktiv')?.length || 0}</p>
+                <p className="text-3xl font-bold text-emerald-400">{players?.length || 0}</p>
               </div>
               <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl">
                 <p className="text-slate-400 text-sm mb-1">Serier sparade</p>
                 <p className="text-3xl font-bold text-blue-400">{leagues?.length || 0}</p>
               </div>
               <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl">
-                <p className="text-slate-400 text-sm mb-1">Träningspass</p>
-                <p className="text-3xl font-bold text-purple-400">{sessions?.length || 0}</p>
+                <p className="text-slate-400 text-sm mb-1">Hemmalag Form.</p>
+                <p className="text-3xl font-bold text-amber-400">{homeFormation}</p>
               </div>
               <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl">
-                <p className="text-slate-400 text-sm mb-1">Vald Formation</p>
-                <p className="text-3xl font-bold text-amber-400">{formation}</p>
+                <p className="text-slate-400 text-sm mb-1">Bortalag Form.</p>
+                <p className="text-3xl font-bold text-rose-400">{awayFormation}</p>
               </div>
             </div>
           </div>
@@ -266,7 +411,7 @@ export default function Home() {
         {activeTab === 'trupp' && (
           <div>
             <h2 className="text-2xl font-bold mb-6">Truppen & Spelare ({players?.length || 0} st)</h2>
-            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-950/50 text-slate-400 border-b border-slate-800">
                   <tr>
@@ -297,112 +442,218 @@ export default function Home() {
 
         {activeTab === 'serier' && (
           <div>
-            <h2 className="text-2xl font-bold mb-2">🏆 Serier & Motståndare (Fogis-koppling)</h2>
-            <p className="text-xs text-slate-400 mb-6">Sök bland tillgängliga serier, spara din serie och nå motståndarlagens registrerade spelartrupper direkt.</p>
+            <h2 className="text-2xl font-bold mb-2">🏆 Serier & Motståndare</h2>
+            <p className="text-xs text-slate-400 mb-6">Sök bland tillgängliga serier och ladda motståndarlag.</p>
 
             <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl mb-8">
-              <label className="block text-xs font-bold uppercase text-emerald-400 mb-2">Sök och välj serie / cup:</label>
-              <div className="flex flex-col md:flex-row gap-4">
-                <input
-                  type="text"
-                  placeholder="Sök serie..."
-                  value={leagueSearchQuery}
-                  onChange={(e) => setLeagueSearchQuery(e.target.value)}
-                  className="flex-1 bg-slate-950 border border-slate-800 text-slate-100 px-4 py-3 rounded-lg text-sm focus:outline-none focus:border-emerald-500"
-                />
-                <select
-                  value={selectedLeagueId}
-                  onChange={(e) => handleSaveLeagueSelection(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 text-emerald-400 font-semibold px-4 py-3 rounded-lg text-sm focus:outline-none focus:border-emerald-500 min-w-[280px]"
-                >
-                  <option value="">-- Välj & Spara serie --</option>
-                  {filteredLeagues?.map((l) => (
-                    <option key={l?.id} value={l?.id}>{l?.name}</option>
-                  ))}
-                </select>
-              </div>
+              <input
+                type="text"
+                placeholder="Sök serie..."
+                value={leagueSearchQuery}
+                onChange={(e) => setLeagueSearchQuery(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 text-slate-100 px-4 py-3 rounded-lg text-sm focus:outline-none focus:border-emerald-500 mb-4"
+              />
+              <select
+                value={selectedLeagueId}
+                onChange={(e) => handleSaveLeagueSelection(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 text-emerald-400 font-semibold px-4 py-3 rounded-lg text-sm focus:outline-none focus:border-emerald-500"
+              >
+                <option value="">-- Välj serie --</option>
+                {filteredLeagues?.map((l) => (
+                  <option key={l?.id} value={l?.id}>{l?.name}</option>
+                ))}
+              </select>
             </div>
 
-            {currentLeague ? (
-              <div>
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-bold text-emerald-400">Aktiv Serie: {currentLeague?.name}</h3>
-                  <span className="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-full font-semibold">
-                    Fogis Synkad ✅
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {currentLeague?.teams?.map((team) => (
-                    <div key={team?.id} className="bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col justify-between shadow-lg">
-                      <div>
-                        <div className="flex justify-between items-start mb-2">
-                          <h4 className="text-lg font-bold text-white">{team?.name}</h4>
-                          <span className="text-xs bg-slate-800 px-2 py-1 rounded text-slate-300 font-semibold">{team?.formation}</span>
-                        </div>
-                        <p className="text-xs text-slate-400 mb-4">Tränare: {team?.coach}</p>
-
-                        <h5 className="text-xs font-bold uppercase text-emerald-400 mb-2">Fogis-registrerade spelare</h5>
-                        <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-                          {team?.players?.map((tp, idx) => (
-                            <div key={idx} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs">
-                              <div className="flex justify-between font-semibold">
-                                <span>#{tp?.number} {tp?.name}</span>
-                                <span className="text-slate-400">{tp?.position}</span>
-                              </div>
-                              {tp?.note && <p className="text-[11px] text-amber-300 mt-1 italic">💡 {tp.note}</p>}
-                            </div>
-                          ))}
-                        </div>
+            {currentLeague && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {currentLeague?.teams?.map((team) => (
+                  <div key={team?.id} className="bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col justify-between shadow-lg">
+                    <div>
+                      <div className="flex justify-between items-start mb-2">
+                        <h4 className="text-lg font-bold text-white">{team?.name}</h4>
+                        <span className="text-xs bg-slate-800 px-2 py-1 rounded text-slate-300 font-semibold">{team?.formation}</span>
                       </div>
-
-                      <button
-                        onClick={() => {
-                          setSelectedOpponentTeamId(team?.id);
-                          setActiveTab('taktik');
-                        }}
-                        className="mt-6 w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-2.5 rounded-lg text-xs transition text-center"
-                      >
-                        🎯 Analysera på Taktiktavlan
-                      </button>
+                      <p className="text-xs text-slate-400 mb-4">Tränare: {team?.coach}</p>
                     </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="bg-slate-900 border border-slate-800 p-8 rounded-xl text-center text-slate-400 text-sm">
-                Ingen serie vald. Sök och välj en serie ovan för att se motståndarlag och spelare.
+                    <button
+                      onClick={() => {
+                        setSelectedOpponentTeamId(team?.id);
+                        setAwayFormation(team?.formation || '4-4-2');
+                        setActiveTab('taktik');
+                      }}
+                      className="mt-4 w-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-semibold py-2.5 rounded-lg text-xs transition text-center"
+                    >
+                      🎯 Ladda motståndare på Taktiktavlan
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
           </div>
         )}
 
+        {/* Taktiktavla */}
         {activeTab === 'taktik' && (
-          <div>
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
-              <div>
-                <h2 className="text-2xl font-bold">Interaktiv Taktiktavla & Motstånd</h2>
-                <p className="text-xs text-slate-400">
-                  {activeOpponentTeam ? `Fokus mot: ${activeOpponentTeam.name}` : 'Ingen specifik motståndare vald'}
-                </p>
+          <div className="flex flex-col h-full pb-8">
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-4 bg-slate-900 border border-slate-800 p-3 rounded-xl shadow-lg shrink-0">
+              <div className="flex items-center gap-4">
+                <div>
+                  <label className="block text-[10px] text-emerald-400 font-bold uppercase">Hemmalag Form / Färg</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <select
+                      value={homeFormation}
+                      onChange={(e) => setHomeFormation(e.target.value)}
+                      className="bg-slate-950 border border-slate-800 text-xs text-white px-2 py-1 rounded"
+                    >
+                      <option value="4-3-3">4-3-3</option>
+                      <option value="4-4-2">4-4-2</option>
+                      <option value="3-5-2">3-5-2</option>
+                      <option value="5-3-2">5-3-2</option>
+                      <option value="4-2-3-1">4-2-3-1</option>
+                    </select>
+                    <input
+                      type="color"
+                      value={homeColor}
+                      onChange={(e) => setHomeColor(e.target.value)}
+                      className="w-7 h-6 bg-slate-950 border border-slate-800 rounded cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-rose-400 font-bold uppercase">Bortalag Form / Färg</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <select
+                      value={awayFormation}
+                      onChange={(e) => setAwayFormation(e.target.value)}
+                      className="bg-slate-950 border border-slate-800 text-xs text-white px-2 py-1 rounded"
+                    >
+                      <option value="4-3-3">4-3-3</option>
+                      <option value="4-4-2">4-4-2</option>
+                      <option value="3-5-2">3-5-2</option>
+                      <option value="5-3-2">5-3-2</option>
+                      <option value="4-2-3-1">4-2-3-1</option>
+                    </select>
+                    <input
+                      type="color"
+                      value={awayColor}
+                      onChange={(e) => setAwayColor(e.target.value)}
+                      className="w-7 h-6 bg-slate-950 border border-slate-800 rounded cursor-pointer"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Verktygsval */}
+              <div className="flex items-center gap-1.5 border-l border-slate-800 pl-4">
+                <button
+                  onClick={() => setActiveTool('select')}
+                  className={`px-3 py-1.5 rounded text-xs font-bold transition ${activeTool === 'select' ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-300'}`}
+                >
+                  🖐️ Flytta
+                </button>
+                <button
+                  onClick={() => setActiveTool('arrow')}
+                  className={`px-3 py-1.5 rounded text-xs font-bold transition ${activeTool === 'arrow' ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-300'}`}
+                >
+                  ➡️ Pil
+                </button>
+                <button
+                  onClick={() => setActiveTool('circle')}
+                  className={`px-3 py-1.5 rounded text-xs font-bold transition ${activeTool === 'circle' ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-300'}`}
+                >
+                  ⭕ Cirkel
+                </button>
+                <button
+                  onClick={() => setActiveTool('space')}
+                  className={`px-3 py-1.5 rounded text-xs font-bold transition ${activeTool === 'space' ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-300'}`}
+                >
+                  🟩 Fri yta
+                </button>
+                <button
+                  onClick={() => setDrawings([])}
+                  className="px-2.5 py-1.5 rounded text-xs font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30 hover:bg-rose-500/30 ml-2"
+                >
+                  🗑️ Rensa
+                </button>
               </div>
             </div>
 
-            <div 
-              ref={pitchRef}
-              className="relative w-full max-w-3xl aspect-[2/3] bg-emerald-700 border-4 border-slate-800 rounded-2xl overflow-hidden shadow-2xl mx-auto select-none"
-            >
-              <div className="absolute inset-0 bg-[linear-gradient(to_bottom,#065f46_0%,#047857_100%)] opacity-90 pointer-events-none" />
-              {pitchTokens?.map((token) => (
-                <div
-                  key={token?.id}
-                  style={{ left: `${token?.x}%`, top: `${token?.y}%` }}
-                  className="absolute -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-emerald-500 text-slate-950 border-2 border-white flex flex-col items-center justify-center font-bold text-xs shadow-lg z-20"
-                >
-                  <span>{token?.number}</span>
-                  <span className="text-[9px] truncate max-w-[36px]">{token?.label}</span>
-                </div>
-              ))}
+            {/* Fotbollsplan behållare */}
+            <div className="flex-1 flex items-center justify-center min-h-[550px]">
+              <div 
+                ref={pitchRef}
+                onPointerDown={handlePitchDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                className="relative w-full max-w-2xl aspect-[2/3] bg-emerald-600 border-4 border-slate-800 rounded-2xl overflow-hidden shadow-2xl select-none cursor-crosshair touch-none"
+              >
+                {/* Gräs & Planlinjer */}
+                <div className="absolute inset-0 bg-[linear-gradient(to_bottom,#047857_0%,#065f46_100%)] pointer-events-none" />
+                
+                {/* Mittlinje */}
+                <div className="absolute top-1/2 left-0 right-0 h-1 bg-white/40 pointer-events-none" />
+                {/* Mittcirkel */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 border-2 border-white/40 rounded-full pointer-events-none" />
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-white/60 rounded-full pointer-events-none" />
+
+                {/* Straffområde uppe */}
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/5 h-[16%] border-2 border-t-0 border-white/40 pointer-events-none" />
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/5 h-[6%] border-2 border-t-0 border-white/40 pointer-events-none" />
+
+                {/* Straffområde nere */}
+                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-3/5 h-[16%] border-2 border-b-0 border-white/40 pointer-events-none" />
+                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1/5 h-[6%] border-2 border-b-0 border-white/40 pointer-events-none" />
+
+                {/* SVG ritlager */}
+                <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
+                  {drawings.map((d, i) => {
+                    if (d.type === 'arrow') {
+                      return (
+                        <g key={i}>
+                          <line x1={`${d.startX}%`} y1={`${d.startY}%`} x2={`${d.endX}%`} y2={`${d.endY}%`} stroke={d.color} strokeWidth="3" strokeDasharray="5,3" />
+                          <circle cx={`${d.endX}%`} cy={`${d.endY}%`} r="4" fill={d.color} />
+                        </g>
+                      );
+                    } else if (d.type === 'circle') {
+                      const rx = Math.abs(d.endX - d.startX) / 2;
+                      const ry = Math.abs(d.endY - d.startY) / 2;
+                      const cx = (d.startX + d.endX) / 2;
+                      const cy = (d.startY + d.endY) / 2;
+                      return <ellipse key={i} cx={`${cx}%`} cy={`${cy}%`} rx={`${rx}%`} ry={`${ry}%`} stroke={d.color} strokeWidth="2.5" fill="none" strokeDasharray="3,3" />;
+                    } else if (d.type === 'space') {
+                      const rx = Math.abs(d.endX - d.startX) / 2;
+                      const ry = Math.abs(d.endY - d.startY) / 2;
+                      const cx = (d.startX + d.endX) / 2;
+                      const cy = (d.startY + d.endY) / 2;
+                      return <ellipse key={i} cx={`${cx}%`} cy={`${cy}%`} rx={`${rx}%`} ry={`${ry}%`} fill={d.color} fillOpacity="0.25" stroke={d.color} strokeWidth="2" />;
+                    }
+                    return null;
+                  })}
+
+                  {currentDraw && activeTool === 'arrow' && (
+                    <line x1={`${currentDraw.startX}%`} y1={`${currentDraw.startY}%`} x2={`${currentDraw.endX}%`} y2={`${currentDraw.endY}%`} stroke="#facc15" strokeWidth="3" strokeDasharray="5,3" />
+                  )}
+                </svg>
+
+                {/* Spelartokens (22 st) */}
+                {pitchTokens?.map((token) => {
+                  const isHome = token.team === 'home';
+                  const bg = isHome ? homeColor : awayColor;
+                  return (
+                    <div
+                      key={token?.id}
+                      onPointerDown={(e) => handlePointerDownToken(token.id, e)}
+                      style={{ left: `${token?.x}%`, top: `${token?.y}%`, backgroundColor: bg }}
+                      className="absolute -translate-x-1/2 -translate-y-1/2 w-9 h-9 rounded-full text-white border-2 border-white flex flex-col items-center justify-center font-bold text-xs shadow-xl z-20 cursor-grab active:cursor-grabbing hover:scale-110 transition-transform"
+                    >
+                      <span className="leading-none text-[12px]">{token?.number}</span>
+                      <span className="text-[8px] truncate max-w-[34px] opacity-90">{token?.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
@@ -427,7 +678,7 @@ export default function Home() {
                 onChange={(e) => setAiPrompt(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg p-4 text-sm focus:outline-none focus:border-emerald-500 mb-4"
               />
-              <button onClick={() => setAiResponse("AI-råd: Fokusera på snabba omställningar mot detta motstånd.")} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold py-2 px-6 rounded-lg text-sm transition">
+              <button onClick={() => setAiResponse("AI-råd: Utnyttja ytorna på kanterna mot detta motstånd.")} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold py-2 px-6 rounded-lg text-sm transition">
                 Generera råd
               </button>
             </div>
